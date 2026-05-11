@@ -1,0 +1,19 @@
+[project]
+name = "claude-wiki-template"
+version = "0.1.0"
+description = "A Claude Code-powered wiki template with schema-driven card types, ingest pipeline, and knowledge graph"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.83",
+    "networkx>=3.6",
+    "pyyaml>=6.0",
+    "markitdown[all]>=0.1.5",
+    "tqdm>=4.67",
+]
+
+[project.optional-dependencies]
+pdf = [
+    "arxiv2markdown",
+    "marker-pdf",
+    "pymupdf4llm",
+]

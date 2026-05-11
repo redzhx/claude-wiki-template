@@ -1,0 +1,164 @@
+# Wiki Template Configuration
+# Customize this file for your project. All Python tools read from here.
+
+# ── Paths ─────────────────────────────────────────────────────────────
+wiki_dir: "wiki"
+index_file: "wiki/index.md"
+log_file: "wiki/log.md"
+graph_dir: "graph"
+graph_json: "graph/graph.json"
+raw_dir: "raw"
+
+# ── Wiki Structure ────────────────────────────────────────────────────
+# Directories excluded from content checks
+excluded_dirs:
+  - archive
+  - types
+
+# Files excluded from content checks
+excluded_files:
+  - index.md
+  - log.md
+  - lint-report.md
+  - health-report.md
+  - overview.md
+
+# Directories whose pages MUST have a ## 关联 (Connections) section
+relation_required_dirs:
+  - entities
+  - concepts
+  - atoms
+
+# Stub detection: pages with body content shorter than this are flagged
+stub_threshold_chars: 100
+
+# ── Frontmatter Schema ────────────────────────────────────────────────
+# Fields required on ALL pages
+required_fields_all:
+  - title
+  - type
+  - created
+  - updated
+
+# Additional required fields for entity/concept/atom pages
+required_fields_card:
+  - card_type
+  - tags
+  - sources
+
+# Directories that get the extra card fields
+card_dirs:
+  - entities
+  - concepts
+  - atoms
+
+# ── Card Types & Wikilink Validation ──────────────────────────────────
+# Valid type values (used in frontmatter `type:` field)
+valid_types:
+  - source
+  - entity
+  - concept
+  - synthesis
+  - query
+  - atom
+
+# Valid card_type values (used in frontmatter `card_type:` field)
+valid_card_types:
+  - person
+  - event
+  - terminology
+  - insight
+  - action
+  - schema
+  - basic
+  - index-card
+  - quote
+  - new-word
+
+# Display names for type/card_type (used as wikilink targets in frontmatter)
+# Add translations for your wiki's language
+type_display_names:
+  # English
+  - source
+  - entity
+  - concept
+  - synthesis
+  - query
+  - atom
+  # Card types - English
+  - person
+  - event
+  - terminology
+  - insight
+  - action
+  - schema
+  - basic
+  - index-card
+  - quote
+  - new-word
+  # Chinese (卡片大法 preset)
+  - 源文件
+  - 实体
+  - 概念
+  - 综述
+  - 问答
+  - 原子
+  - 人物卡
+  - 事件卡
+  - 术语卡
+  - 新知卡
+  - 行动卡
+  - 图示卡
+  - 基础卡
+  - 索引卡
+  - 金句卡
+  - 新词卡
+
+# ── Relations ─────────────────────────────────────────────────────────
+# Section header that marks the connections section
+relations_header: "## 关联"
+
+# ── Graph Colors ──────────────────────────────────────────────────────
+# Colors for node types in the graph visualization
+type_colors:
+  source: "#4CAF50"
+  entity: "#2196F3"
+  concept: "#FF9800"
+  synthesis: "#9C27B0"
+  atom: "#F44336"
+  query: "#607D8B"
+
+card_type_colors:
+  person: "#42A5F5"
+  event: "#1E88E5"
+  terminology: "#FFA726"
+  insight: "#FFD54F"
+  action: "#66BB6A"
+  schema: "#AB47BC"
+  basic: "#BDBDBD"
+  index-card: "#8D6E63"
+  quote: "#EF5350"
+  new-word: "#EC407A"
+
+# ── LLM Configuration ────────────────────────────────────────────────
+# Used by lint.py and build_graph.py
+llm:
+  model_env: "LLM_MODEL"
+  default_model: "claude-sonnet-4-6"
+  max_tokens: 3000
+
+# ── Lint Thresholds ───────────────────────────────────────────────────
+lint:
+  min_outbound_links: 2
+  min_content_chars_for_hub: 500
+  missing_entity_min_mentions: 3
+  semantic_sample_size: 20
+  semantic_page_truncate_chars: 1500
+
+# ── Extraction Density Targets ────────────────────────────────────────
+# Used for validating extraction thoroughness during ingest
+density_targets:
+  research_paper: [8, 15]
+  book_chapter_dense: [8, 15]
+  book_chapter_light: [5, 8]
+  blog_post: [3, 6]
