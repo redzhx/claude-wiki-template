@@ -1,5 +1,20 @@
 {
   "permissions": {
     "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; case \"$f\" in */wiki/*) python3 tools/build_graph.py --no-infer 2>/dev/null && python3 tools/build_browser.py 2>/dev/null; ;; esac; } || true",
+            "timeout": 60000,
+            "statusMessage": "Rebuilding knowledge graph + browser..."
+          }
+        ]
+      }
+    ]
   }
 }

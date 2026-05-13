@@ -28,7 +28,7 @@ from datetime import date
 import os
 
 from config_loader import (
-    wiki_dir, index_file, log_file, graph_json as graph_json_path,
+    wiki_dir, index_file, log_file, changelog_file, graph_json as graph_json_path,
     excluded_dirs, excluded_files, relations_header,
     lint_min_outbound, lint_hub_min_chars, lint_missing_entity_min,
     lint_sample_size, lint_truncate_chars,
@@ -38,7 +38,7 @@ from config_loader import (
 REPO_ROOT = Path(__file__).parent.parent
 WIKI_DIR = wiki_dir()
 GRAPH_JSON = graph_json_path()
-LOG_FILE = log_file()
+CHANGELOG_FILE = changelog_file()
 
 
 def read_file(path: Path) -> str:
@@ -327,21 +327,25 @@ def run_lint():
 
     print("  running semantic lint via API...")
     prompt = f"""You are linting a wiki knowledge base. Review the pages below and identify:
-1. Contradictions between pages (claims that conflict)
-2. Stale content (summaries that newer sources have superseded)
-3. Data gaps (important questions the wiki can't answer — suggest specific sources to find)
-4. Concepts mentioned but lacking depth
+1. Self-contradictions within a single page (claims that conflict with other claims or attributions in the SAME page — e.g. the attribution section says a quote is from Kant, but the commentary section says Kant never used it)
+2. Strong assertions about named entities that are likely false (e.g. "X never did Y" when the page itself attributes Y to X; "X was the first to..." without evidence)
+3. Contradictions between pages (claims that conflict across different pages)
+4. Stale content (summaries that newer sources have superseded)
+5. Data gaps (important questions the wiki can't answer — suggest specific sources to find)
+6. Concepts mentioned but lacking depth
 
 Wiki pages (sample of {len(sample)} pages):
 {pages_context}
 
 Return a markdown lint report with these sections:
-## Contradictions
+## Self-Contradictions (Within Page)
+## Suspicious Assertions
+## Contradictions (Between Pages)
 ## Stale Content
 ## Data Gaps & Suggested Sources
 ## Concepts Needing More Depth
 
-Be specific — name the exact pages and claims involved.
+Be specific — name the exact pages and claims involved. For self-contradictions, quote both conflicting statements verbatim.
 """
     semantic_report = call_llm(prompt)
 
@@ -448,9 +452,9 @@ Be specific — name the exact pages and claims involved.
     return report
 
 
-def append_log(entry: str):
-    existing = read_file(LOG_FILE)
-    LOG_FILE.write_text(entry.strip() + "\n\n" + existing, encoding="utf-8")
+def append_changelog(entry: str):
+    existing = read_file(CHANGELOG_FILE) if CHANGELOG_FILE.exists() else ""
+    CHANGELOG_FILE.write_text(entry.strip() + "\n\n" + existing, encoding="utf-8")
 
 
 if __name__ == "__main__":
@@ -465,4 +469,4 @@ if __name__ == "__main__":
         report_path.write_text(report, encoding="utf-8")
         print(f"\nSaved: {report_path.relative_to(REPO_ROOT)}")
         today = date.today().isoformat()
-        append_log(f"## [{today}] lint | Wiki health check\n\nRan lint. See lint-report.md for details.")
+        append_changelog(f"## [{today}] lint | Wiki health check\n\nRan lint. See lint-report.md for details.")

@@ -8,6 +8,7 @@ Usage:
     python tools/build_graph.py               # full rebuild
     python tools/build_graph.py --no-infer    # skip semantic inference (faster)
     python tools/build_graph.py --open        # open graph.html in browser after build
+    python tools/build_graph.py --browser     # also rebuild card browser data
 
 Outputs:
     graph/graph.json    — node/edge data (cached by SHA256)
@@ -29,6 +30,8 @@ from pathlib import Path
 from datetime import date
 
 import os
+import sys
+import subprocess
 
 try:
     import networkx as nx
@@ -41,18 +44,20 @@ except ImportError:
 REPO_ROOT = Path(__file__).parent.parent
 
 from config_loader import (
-    wiki_dir, graph_dir, graph_json as graph_json_path, log_file,
+    wiki_dir, graph_dir, graph_json as graph_json_path, log_file, changelog_file,
     type_color, card_type_color,
     llm_model_env, llm_default_model, llm_max_tokens,
 )
 
 WIKI_DIR = wiki_dir()
+RAW_DIR = REPO_ROOT / "raw"
 GRAPH_DIR = graph_dir()
 GRAPH_JSON = graph_json_path()
 GRAPH_HTML = GRAPH_DIR / "graph.html"
 CACHE_FILE = GRAPH_DIR / ".cache.json"
 INFERRED_EDGES_FILE = GRAPH_DIR / ".inferred_edges.jsonl"
 LOG_FILE = log_file()
+CHANGELOG_FILE = changelog_file()
 
 # Node type → color mapping (from config)
 TYPE_COLORS = {
@@ -112,7 +117,24 @@ def sha256(text: str) -> str:
 
 def all_wiki_pages() -> list[Path]:
     return [p for p in WIKI_DIR.rglob("*.md")
-            if p.name not in ("index.md", "log.md", "lint-report.md")]
+            if p.name not in ("log.md", "lint-report.md")
+            and "archive/" not in str(p.relative_to(WIKI_DIR))
+            and "types/" not in str(p.relative_to(WIKI_DIR))]
+
+
+def all_raw_pages() -> list[Path]:
+    """Return all markdown source files in raw/ directory.
+
+    Also scans raw/ subdirectories (e.g., versioned dirs containing both
+    the source file and accompanying images).
+    """
+    pages = []
+    if RAW_DIR.exists():
+        pages.extend(RAW_DIR.glob("*.md"))
+        for subdir in RAW_DIR.iterdir():
+            if subdir.is_dir() and subdir.name != "bilingual":
+                pages.extend(subdir.glob("*.md"))
+    return sorted(pages)
 
 
 def extract_wikilinks(content: str) -> list[str]:
@@ -121,7 +143,12 @@ def extract_wikilinks(content: str) -> list[str]:
 
 def extract_frontmatter_type(content: str) -> str:
     match = re.search(r'^type:\s*(\S+)', content, re.MULTILINE)
-    return match.group(1).strip('"\'') if match else "unknown"
+    if not match:
+        return "unknown"
+    value = match.group(1).strip('"\'')
+    # Parse wikilink: [[concept]] or [[concept|概念]] → concept
+    m = re.match(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', value)
+    return m.group(1) if m else value
 
 
 def extract_frontmatter_card_type(content: str) -> str | None:
@@ -175,8 +202,154 @@ def build_nodes(pages: list[Path]) -> list[dict]:
         }
         if card_type:
             node["card_type"] = card_type
+        source_url_match = re.search(r'^source_url:\s*"?(https?://[^"\s\n]+)"?', content, re.MULTILINE)
+        if source_url_match:
+            node["source_url"] = source_url_match.group(1)
+        date_match = re.search(r'^(?:created|published):\s*"?([^"\n]+)"?', content, re.MULTILINE)
+        if date_match:
+            node["date"] = date_match.group(1).strip()
         nodes.append(node)
     return nodes
+
+
+def raw_page_id(path: Path) -> str:
+    """Return graph node ID for a raw source file.
+
+    Example: raw/article-foo.md          → raw/article-foo
+    """
+    rel = path.relative_to(RAW_DIR).as_posix().replace(".md", "")
+    return f"raw/{rel}"
+
+
+def bilingual_path_for(raw_path: Path) -> Path | None:
+    """Return the bilingual/zh file path if it exists, else None.
+
+    Checks for these suffixes in order (first found wins):
+    - -zh.md (pure Chinese translation, highest priority)
+    - -bilingual.md (bilingual English+Chinese, existing convention)
+    """
+    stem = raw_path.stem.replace(" ", "-")
+    for suffix in ("-zh", "-bilingual"):
+        candidate = REPO_ROOT / "raw" / "bilingual" / f"{stem}{suffix}.md"
+        if candidate.exists():
+            return candidate
+    # Fallback: try removing arXiv version suffix (e.g. .20014v1)
+    if stem.count(".") == 1:
+        base = stem.rsplit(".", 1)[0]
+        for suffix in ("-zh", "-bilingual"):
+            candidate = REPO_ROOT / "raw" / "bilingual" / f"{base}{suffix}.md"
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def rewrite_raw_images(content: str, raw_file: Path) -> str:
+    """Rewrite relative image paths in markdown for browser display.
+
+    The browser loads at <repo_root>/browser/index.html, so relative image
+    paths like ![](images/foo.jpg) need to resolve from there. For a raw file
+    at raw/report-v1/report.md, the correct path is ../raw/report-v1/images/foo.jpg.
+    """
+    raw_dir = raw_file.parent.relative_to(REPO_ROOT).as_posix()
+    prefix = f"../{raw_dir}/"
+
+    def replace(match):
+        alt = match.group(1)
+        src = match.group(2)
+        if src.startswith(("http://", "https://", "data:", "file://", "/")):
+            return match.group(0)
+        return f"![{alt}]({prefix}{src})"
+
+    return re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", replace, content)
+
+
+def build_raw_nodes(raw_pages: list[Path]) -> list[dict]:
+    """Build graph nodes for raw source documents.
+
+    Raw source files with a bilingual version (raw/bilingual/<stem>-bilingual.md)
+    display the bilingual content in the browser, while ingest still uses the
+    English original.
+    """
+    nodes = []
+    for p in raw_pages:
+        content = read_file(p)
+        bilingual = bilingual_path_for(p)
+        display_content = read_file(bilingual) if bilingual else content
+        # Label priority: raw frontmatter title > display_content H1 > raw H1 > stem
+        title_match = re.search(r'^title:\s*"?([^"\n]+)"?', content, re.MULTILINE)
+        if title_match:
+            label = title_match.group(1).strip()
+        else:
+            title_match = re.search(r'^#\s+(.+)$', display_content, re.MULTILINE)
+            label = title_match.group(1).strip() if title_match else p.stem
+        lines = [ln.strip() for ln in content.splitlines()
+                 if ln.strip() and not ln.strip().startswith('#') and ln.strip() != '---']
+        preview = ' '.join(lines[:3])[:220]
+
+        node = {
+            "id": raw_page_id(p),
+            "label": label,
+            "type": "source",
+            "card_type": "article",
+            "color": TYPE_COLORS.get("source", "#9E9E9E"),
+            "path": str(p.relative_to(REPO_ROOT)),
+            "markdown": rewrite_raw_images(display_content, p),
+            "preview": preview,
+            "tags": [],
+            "sources": [],
+            "aliases": [],
+        }
+        date_match = re.search(r'^(?:published|created):\s*"?([^"\n]+)"?', content, re.MULTILINE)
+        if date_match:
+            node["date"] = date_match.group(1).strip()
+        nodes.append(node)
+    return nodes
+
+
+def build_raw_edges(raw_pages: list[Path], wiki_pages: list[Path]) -> list[dict]:
+    """Link raw source files to their wiki/sources/ counterparts.
+
+    Matching priority:
+    1. source_file frontmatter in wiki source pages (exact path match)
+    2. Stem-based fallback (raw file stem matches wiki source page stem)
+    """
+    source_file_map = {}
+    stem_map = {}
+    for p in wiki_pages:
+        pid = page_id(p)
+        if not pid.startswith("sources/"):
+            continue
+        content = read_file(p)
+        match = re.search(r'^source_file:\s*"?([^"\n]+)"?', content, re.MULTILINE)
+        if match:
+            source_path = match.group(1).strip().replace(".md", "")
+            source_file_map[source_path] = pid  # source_path starts with "raw/"
+        stem_map[p.stem.lower()] = pid
+
+    edges = []
+    for p in raw_pages:
+        raw_id = raw_page_id(p)
+        if raw_id in source_file_map:
+            edges.append({
+                "id": f"{raw_id}->{source_file_map[raw_id]}:EXTRACTED",
+                "from": raw_id,
+                "to": source_file_map[raw_id],
+                "type": "EXTRACTED",
+                "color": EDGE_COLORS["EXTRACTED"],
+                "confidence": 1.0,
+            })
+            continue
+        stem = p.stem.lower()
+        if stem in stem_map:
+            edges.append({
+                "id": f"{raw_id}->{stem_map[stem]}:EXTRACTED",
+                "from": raw_id,
+                "to": stem_map[stem],
+                "type": "EXTRACTED",
+                "color": EDGE_COLORS["EXTRACTED"],
+                "confidence": 1.0,
+            })
+    return edges
 
 
 def build_extracted_edges(pages: list[Path]) -> list[dict]:
@@ -189,7 +362,8 @@ def build_extracted_edges(pages: list[Path]) -> list[dict]:
         content = read_file(p)
         src = page_id(p)
         for link in extract_wikilinks(content):
-            target = stem_map.get(link.lower())
+            target_name = link.split("|")[0].strip().lower()
+            target = stem_map.get(target_name)
             if target and target != src:
                 key = (src, target)
                 if key not in seen:
@@ -336,6 +510,8 @@ Rules:
         valid_rels = []
         try:
             raw = call_llm(prompt, llm_model_env(), llm_default_model(), max_tokens=1024)
+            if raw is None:
+                raise ValueError("LLM returned None — API may be unavailable")
             raw = raw.strip()
 
             match = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", raw)
@@ -452,8 +628,9 @@ def find_phantom_hubs(pages: list[Path], min_refs: int = 2) -> list[dict]:
         links = extract_wikilinks(content)
         src = page_id(p)
         for link in links:
-            if link.lower() not in existing_stems:
-                refs.setdefault(link, set()).add(src)
+            target_name = link.split("|")[0].strip().lower()
+            if target_name not in existing_stems:
+                refs.setdefault(target_name, set()).add(src)
 
     phantoms = [
         {
@@ -1381,37 +1558,38 @@ applyFilters();
 </html>"""
 
 
-def append_log(entry: str):
-    log_path = WIKI_DIR / "log.md"
+def append_changelog(entry: str):
+    changelog_path = CHANGELOG_FILE
     entry_text = entry.strip()
-    if not log_path.exists():
-        log_path.write_text(
-            "# Wiki Log\n\n"
-            "> Records important additions, revisions, and clarifications in the project knowledge layer. Maintained in append-only mode for agent and human traceability.\n\n"
+    if not changelog_path.exists():
+        changelog_path.write_text(
+            "# Changelog\n\n"
+            "> Project-level changes: graph rebuilds, tool updates, configuration changes. Maintained in append-only mode for agent and human traceability.\n\n"
             f"{entry_text}\n",
             encoding="utf-8",
         )
         return
 
-    existing = read_file(log_path).rstrip()
+    existing = read_file(changelog_path).rstrip()
     if not existing:
         existing = (
-            "# Wiki Log\n\n"
-            "> Records important additions, revisions, and clarifications in the project knowledge layer. Maintained in append-only mode for agent and human traceability."
+            "# Changelog\n\n"
+            "> Project-level changes: graph rebuilds, tool updates, configuration changes. Maintained in append-only mode for agent and human traceability."
         )
-    log_path.write_text(existing + "\n\n" + entry_text + "\n", encoding="utf-8")
+    changelog_path.write_text(existing + "\n\n" + entry_text + "\n", encoding="utf-8")
 
 
 def build_graph(infer: bool = True, open_browser: bool = False, clean: bool = False,
                 report: bool = False, save: bool = False):
     pages = all_wiki_pages()
+    raw_pages = all_raw_pages()
     today = date.today().isoformat()
 
-    if not pages:
+    if not pages and not raw_pages:
         print("Wiki is empty. Ingest some sources first.")
         return
 
-    print(f"Building graph from {len(pages)} wiki pages...")
+    print(f"Building graph from {len(pages)} wiki pages + {len(raw_pages)} raw sources...")
     GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
     # Clean checkpoint if requested
@@ -1426,6 +1604,14 @@ def build_graph(infer: bool = True, open_browser: bool = False, clean: bool = Fa
     nodes = build_nodes(pages)
     edges = build_extracted_edges(pages)
     print(f"  → {len(edges)} extracted edges")
+
+    # Add raw source nodes and link them to wiki/sources/ counterparts
+    if raw_pages:
+        raw_nodes = build_raw_nodes(raw_pages)
+        nodes.extend(raw_nodes)
+        raw_edges = build_raw_edges(raw_pages, pages)
+        edges.extend(raw_edges)
+        print(f"  → added {len(raw_nodes)} raw source nodes, {len(raw_edges)} source→wiki edges")
 
     # Pass 2: inferred edges
     if infer:
@@ -1470,8 +1656,6 @@ def build_graph(infer: bool = True, open_browser: bool = False, clean: bool = Fa
 
     n_ext = len([e for e in edges if e['type']=='EXTRACTED'])
     n_inf = len([e for e in edges if e['type'] in ('INFERRED', 'AMBIGUOUS')])
-    append_log(f"## [{today}] graph | Knowledge graph rebuilt\n\n{len(nodes)} nodes, {len(edges)} edges ({n_ext} extracted, {n_inf} inferred).")
-
     # Generate health report
     if report:
         if not HAS_NETWORKX:
@@ -1483,7 +1667,6 @@ def build_graph(infer: bool = True, open_browser: bool = False, clean: bool = Fa
                 report_path = GRAPH_DIR / "graph-report.md"
                 report_path.write_text(report_text, encoding="utf-8")
                 print(f"  saved: {report_path.relative_to(REPO_ROOT)}")
-            append_log(f"## [{today}] report | Graph health report generated\n\n{len(nodes)} nodes analyzed.")
 
     if open_browser:
         webbrowser.open(f"file://{GRAPH_HTML.resolve()}")
@@ -1493,9 +1676,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build wiki knowledge graph")
     parser.add_argument("--no-infer", action="store_true", help="Skip semantic inference (faster)")
     parser.add_argument("--open", action="store_true", help="Open graph.html in browser")
+    parser.add_argument("--browser", action="store_true", help="Also rebuild card browser data")
     parser.add_argument("--clean", action="store_true", help="Delete checkpoint and force full re-inference")
     parser.add_argument("--report", action="store_true", help="Generate graph health report")
     parser.add_argument("--save", action="store_true", help="Save report to graph/graph-report.md")
     args = parser.parse_args()
     build_graph(infer=not args.no_infer, open_browser=args.open, clean=args.clean,
                 report=args.report, save=args.save)
+
+    if args.browser:
+        browser_script = Path(__file__).parent / "build_browser.py"
+        print(f"\n  Rebuilding card browser...")
+        result = subprocess.run([sys.executable, str(browser_script)], capture_output=True, text=True, cwd=REPO_ROOT)
+        if result.returncode == 0:
+            print(result.stdout.strip())
+        else:
+            print(f"  [error] browser rebuild failed:\n{result.stderr}")

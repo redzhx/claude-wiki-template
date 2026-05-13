@@ -258,6 +258,22 @@ def check_broken_wikilinks(pages: list[Path]) -> list[dict]:
     return results
 
 
+def check_file_broken_outgoing(file_path: str) -> list[str]:
+    """Check all outgoing wikilinks from a single file. Returns broken target names.
+
+    Designed for use in automated hooks — minimal output, no config dependency.
+    """
+    p = Path(file_path)
+    if not p.exists() or not p.is_file():
+        return []
+    valid_targets = _build_valid_targets()
+    broken = []
+    for target in find_wikilink_targets(read_file(p)):
+        if target not in valid_targets:
+            broken.append(target)
+    return broken
+
+
 # ── Check: Missing relations section ─────────────────────────────────
 
 def check_missing_relations(pages: list[Path] | None = None) -> list[dict]:
@@ -345,6 +361,214 @@ def check_frontmatter(pages: list[Path]) -> list[dict]:
     return results
 
 
+# ── Check: Source file path validation ────────────────────────────────
+
+def check_source_file_paths() -> list[dict]:
+    """Verify that source_file frontmatter in source pages points to an actual file."""
+    source_dir = WIKI_DIR / "sources"
+    results = []
+    if not source_dir.exists():
+        return results
+
+    repo_root = Path(__file__).parent.parent
+    for p in sorted(source_dir.glob("*.md")):
+        content = read_file(p)
+        fm, _ = _extract_frontmatter(content)
+        if fm is None:
+            continue
+
+        sf_match = re.search(r'^source_file:\s*(.+)$', fm, re.MULTILINE)
+        if not sf_match:
+            results.append({
+                "page": str(p.relative_to(repo_root)),
+                "issue": "Missing `source_file` field in frontmatter",
+            })
+            continue
+
+        source_path = sf_match.group(1).strip().strip('"\'')
+        full_path = repo_root / source_path
+        if not full_path.exists():
+            results.append({
+                "page": str(p.relative_to(repo_root)),
+                "issue": f"source_file `{source_path}` not found on disk",
+            })
+
+    return results
+
+
+# ── Check: Archive integrity ────────────────────────────────────────
+
+def check_archive_integrity() -> dict:
+    """Verify that revisions in live pages have corresponding archive files and vice versa."""
+    archive_dir = WIKI_DIR / "archive"
+    repo_root = Path(__file__).parent.parent
+    missing_files = []
+    orphaned_files = []
+
+    if not archive_dir.exists():
+        return {"missing_files": missing_files, "orphaned_files": orphaned_files}
+
+    # Collect all revision references from live pages
+    referenced = set()  # set of archive filenames
+    for p in all_wiki_pages():
+        content = read_file(p)
+        fm, _ = _extract_frontmatter(content)
+        if fm is None:
+            continue
+        for m in re.finditer(r'\[\[([^\]]+?)-V(\d+)\]\]', fm):
+            page_stem = m.group(1)
+            version = m.group(2)
+            expected = f"{page_stem}-V{version}.md"
+            referenced.add(expected)
+
+    # Check each referenced file exists
+    for ref in sorted(referenced):
+        if not (archive_dir / ref).exists():
+            # Look up which page references it
+            missing_files.append({
+                "archive_file": ref,
+                "issue": f"referenced in revisions but missing from wiki/archive/",
+            })
+
+    # Check for orphaned files in archive (not referenced by any live page)
+    for f in sorted(archive_dir.iterdir()):
+        if not f.is_file() or f.suffix != ".md":
+            continue
+        if f.name not in referenced:
+            orphaned_files.append({
+                "archive_file": f.name,
+                "issue": "exists in wiki/archive/ but not referenced by any live page's revisions field",
+            })
+
+    return {"missing_files": missing_files, "orphaned_files": orphaned_files}
+
+
+# ── Check: Bilingual link consistency ────────────────────────────────
+
+def _resolve_bilingual_file(raw_stem: str) -> Path | None:
+    """Find the bilingual/zh file for a given raw stem.
+
+    Checks suffixes in priority order: -zh.md first, then -bilingual.md.
+    Strips arXiv version suffix (.v1/.v2) as a fallback.
+    """
+    bilingual_dir = Path(__file__).parent.parent / "raw" / "bilingual"
+    for suffix in ("-zh", "-bilingual"):
+        candidate = bilingual_dir / f"{raw_stem}{suffix}.md"
+        if candidate.exists():
+            return candidate
+    # Fallback: strip arXiv version suffix (e.g. .20014v1 → .20014)
+    if raw_stem.count(".") == 1:
+        base = raw_stem.rsplit(".", 1)[0]
+        for suffix in ("-zh", "-bilingual"):
+            candidate = bilingual_dir / f"{base}{suffix}.md"
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def check_bilingual_links() -> list[dict]:
+    """Check that source pages link to existing bilingual versions and vice versa."""
+    raw_dir = Path(__file__).parent.parent / "raw"
+    bilingual_dir = raw_dir / "bilingual"
+    source_dir = WIKI_DIR / "sources"
+    repo_root = Path(__file__).parent.parent
+    results = []
+
+    if not bilingual_dir.exists() or not source_dir.exists():
+        return results
+
+    for p in sorted(source_dir.glob("*.md")):
+        content = read_file(p)
+        fm, body = _extract_frontmatter(content)
+        if fm is None:
+            continue
+
+        sf_match = re.search(r'^source_file:\s*(.+)$', fm, re.MULTILINE)
+        if not sf_match:
+            continue
+
+        source_path = sf_match.group(1).strip().strip('"\'')
+        raw_file = repo_root / source_path
+
+        raw_stem = raw_file.stem.replace(" ", "-")
+        bilingual_file = _resolve_bilingual_file(raw_stem)
+
+        if not bilingual_file:
+            continue
+
+        bilingual_basename = bilingual_file.name
+
+        # Check source page has 📖 link
+        has_link = any(kw in body for kw in ("中英双语版", "中文版", "bilingual"))
+        if not has_link:
+            results.append({
+                "page": str(p.relative_to(repo_root)),
+                "issue": f"Bilingual version exists at raw/bilingual/{bilingual_basename} but no link in `## 源文件` section",
+            })
+
+        # Check raw file has backlink
+        if raw_file.exists():
+            raw_content = read_file(raw_file)
+            has_backlink = "bilingual" in raw_content.lower() and any(
+                kw in raw_content for kw in ("中英双语版", "中文版")
+            )
+            if not has_backlink:
+                results.append({
+                    "page": str(raw_file.relative_to(repo_root)),
+                    "issue": f"Bilingual version exists but raw file missing backlink to bilingual/{bilingual_basename}",
+                })
+
+    return results
+
+
+# ── Check: Raw source files missing published date ────────────────────
+
+def check_raw_source_dates() -> list[dict]:
+    """Check raw source files for missing `published` date in frontmatter.
+
+    Scans raw/**/*.md recursively (skips bilingual/).
+    For paper-type files, also checks that the filename contains a year.
+    """
+    raw_dir = Path(__file__).parent.parent / "raw"
+    results = []
+
+    source_files: list[Path] = []
+    for f in raw_dir.rglob("*.md"):
+        rel = f.relative_to(raw_dir)
+        if len(rel.parts) > 1 and rel.parts[0] == "bilingual":
+            continue
+        source_files.append(f)
+
+    for f in source_files:
+        content = read_file(f)
+        fm, _ = _extract_frontmatter(content)
+
+        if fm is None:
+            results.append({
+                "path": str(f.relative_to(Path(__file__).parent.parent)),
+                "issue": "Missing frontmatter",
+            })
+            continue
+
+        has_published = bool(re.search(r'^published:\s*\S', fm, re.MULTILINE))
+        is_paper = f.stem.startswith("paper-")
+        has_year_in_name = bool(re.search(r'\d{4}', f.stem))
+
+        issues = []
+        if not has_published:
+            issues.append("missing `published` field in frontmatter")
+        if is_paper and not has_year_in_name:
+            issues.append("paper filename missing year (expected: paper-YYYY-...)")
+
+        if issues:
+            results.append({
+                "path": str(f.relative_to(Path(__file__).parent.parent)),
+                "issue": "; ".join(issues),
+            })
+
+    return sorted(results, key=lambda x: x["path"])
+
+
 # ── Report Generation ───────────────────────────────────────────────
 
 def run_health() -> dict:
@@ -360,6 +584,10 @@ def run_health() -> dict:
         "broken_wikilinks": check_broken_wikilinks(pages),
         "missing_relations": check_missing_relations(),
         "frontmatter": check_frontmatter(pages),
+        "raw_source_dates": check_raw_source_dates(),
+        "source_file_paths": check_source_file_paths(),
+        "archive_integrity": check_archive_integrity(),
+        "bilingual_links": check_bilingual_links(),
     }
 
 
@@ -468,6 +696,68 @@ def format_report(results: dict) -> str:
         lines.append(f"All entity/concept/atom pages have a {header} section. OK")
     lines.append("")
 
+    # Raw Source Dates
+    date_issues = results.get("raw_source_dates", [])
+    lines.append(f"## Missing `published` Date in Source Files ({len(date_issues)} issues)")
+    lines.append("")
+    if date_issues:
+        lines.append("| File | Issue |")
+        lines.append("|---|---|")
+        for di in date_issues[:50]:
+            lines.append(f"| `{di['path']}` | {di['issue']} |")
+        if len(date_issues) > 50:
+            lines.append(f"| ... | ({len(date_issues) - 50} more) |")
+    else:
+        lines.append("All raw source files have a `published` date in frontmatter. OK")
+    lines.append("")
+
+    # Source file path validation
+    sf_issues = results.get("source_file_paths", [])
+    lines.append(f"## Source File Path Validation ({len(sf_issues)} issues)")
+    lines.append("")
+    if sf_issues:
+        lines.append("| Page | Issue |")
+        lines.append("|---|---|")
+        for sf in sf_issues:
+            lines.append(f"| `{sf['page']}` | {sf['issue']} |")
+    else:
+        lines.append("All source_file paths resolve to existing files. OK")
+    lines.append("")
+
+    # Bilingual link consistency
+    bl_issues = results.get("bilingual_links", [])
+    lines.append(f"## Bilingual Link Consistency ({len(bl_issues)} issues)")
+    lines.append("")
+    if bl_issues:
+        lines.append("| Page | Issue |")
+        lines.append("|---|---|")
+        for bl in bl_issues:
+            lines.append(f"| `{bl['page']}` | {bl['issue']} |")
+    else:
+        lines.append("All bilingual links are consistent. OK")
+    lines.append("")
+
+    # Archive integrity
+    ar = results.get("archive_integrity", {"missing_files": [], "orphaned_files": []})
+    missing_ar = ar["missing_files"]
+    orphaned_ar = ar["orphaned_files"]
+    total_ar = len(missing_ar) + len(orphaned_ar)
+    lines.append(f"## Archive Integrity ({total_ar} issues)")
+    lines.append("")
+    if missing_ar:
+        lines.append("### Missing Archive Files (referenced in revisions but not on disk)")
+        for m in missing_ar:
+            lines.append(f"- `{m['archive_file']}` — {m['issue']}")
+        lines.append("")
+    if orphaned_ar:
+        lines.append("### Orphaned Archive Files (on disk but not referenced by any live page)")
+        for o in orphaned_ar:
+            lines.append(f"- `{o['archive_file']}` — {o['issue']}")
+        lines.append("")
+    if not total_ar:
+        lines.append("All revisions reference existing archive files; no orphaned files. OK")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -479,7 +769,17 @@ if __name__ == "__main__":
                         help="Save report to wiki/health-report.md")
     parser.add_argument("--json", action="store_true",
                         help="Output machine-readable JSON instead of markdown")
+    parser.add_argument("--check-file", type=str, metavar="PATH",
+                        help="Check only broken outgoing wikilinks from a single file (for hook use)")
     args = parser.parse_args()
+
+    if args.check_file:
+        broken = check_file_broken_outgoing(args.check_file)
+        if broken:
+            for target in broken:
+                print(f"BROKEN: {args.check_file} -> [[{target}]]", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
 
     results = run_health()
 

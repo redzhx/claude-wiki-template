@@ -5,9 +5,12 @@
 wiki_dir: "wiki"
 index_file: "wiki/index.md"
 log_file: "wiki/log.md"
+changelog_file: "changelog.md"
 graph_dir: "graph"
 graph_json: "graph/graph.json"
 raw_dir: "raw"
+browser_dir: "browser"
+browser_data: "browser/data.js"
 
 # ── Wiki Structure ────────────────────────────────────────────────────
 # Directories excluded from content checks
@@ -162,3 +165,14 @@ density_targets:
   book_chapter_dense: [8, 15]
   book_chapter_light: [5, 8]
   blog_post: [3, 6]
+  policy_document: [5, 10]
+  industry_report: [6, 12]
+
+# ── Browser Configuration ─────────────────────────────────────────────
+browser:
+  title: "Wiki Knowledge Base"
+  subtitle: "Structured knowledge cards"
+  cards_per_page: 50
+  enable_search: true
+  default_sort: "newest"  # newest, oldest, alpha
+  show_graph_link: true

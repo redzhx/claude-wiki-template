@@ -64,6 +64,10 @@ def log_file() -> Path:
     return REPO_ROOT / get("log_file", "wiki/log.md")
 
 
+def changelog_file() -> Path:
+    return REPO_ROOT / get("changelog_file", "changelog.md")
+
+
 def graph_dir() -> Path:
     return REPO_ROOT / get("graph_dir", "graph")
 

@@ -13,10 +13,14 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
 
 ### Steps (in order)
 
+0. **Normalize raw filename** — If the source file path contains spaces, rename it with hyphens before proceeding (e.g., `"The Case.md"` → `"The-Case.md"`). Then update the corresponding bilingual file's `original` YAML field (if a bilingual file exists) and the raw file's bilingual backlink to reflect the new filename. This ensures the bilingual lookup in `build_graph.py`/`build_browser.py` matches correctly.
+
 1. Read the source document fully using the Read tool (auto-convert if non-markdown)
 2. Read `wiki/index.md` and `wiki/overview.md` for current wiki context
-3. Write `wiki/sources/<slug>.md` — use the Source Page Format below
-4. Update `wiki/index.md` — add entry under Sources section
+3. Write `wiki/sources/<slug>.md` — use the Source Page Format below. **If the raw file has a bilingual reference link at bottom, include the bilingual link in the `## 源文件` section.**
+4. **`source_file` path — critical for graph linking** — the graph builder (`build_raw_edges()`) uses the `source_file` frontmatter to match raw files to wiki source pages. After writing the source page:
+   - Check that `raw/<path>` from `source_file` is an actual file on disk. Fix if mismatched.
+   - **Subdirectory convention for sources with images**: Some sources (e.g., PDFs converted to markdown with embedded images) live in `raw/<versioned-dir>/` rather than directly in `raw/`. In this case, `source_file` must be `raw/<versioned-dir>/<filename>.md`. This lets the graph builder find the file (it scans subdirectories) and correctly rewrite image paths for browser display. Example: `source_file: "raw/report-v1/report.md"`
 5. Update `wiki/overview.md` — revise synthesis if warranted
 6. **Check for existing pages that will be updated** — for each entity/concept/atom that this new source will add information to, check if a wiki page already exists. If yes, **archive it first** before modifying:
    1. Copy the current page to `wiki/archive/{Name}-V{N}.md` (N = next version number; start at V1, increment for each update)
@@ -35,6 +39,11 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
    4. **Quote capture**: Find the most striking original quotes → quote cards
    5. **Action extraction**: What methods can guide your own actions? → action cards
    6. **Free notes**: Any personal reflections or uncategorized content? → basic cards
+   7. **Narrative-specific extraction** — for long-form journalism, personal essays, memoirs, and other narrative-heavy sources, apply these additional detection patterns AFTER the standard top-down extraction (the source may have both informational content AND narrative richness):
+      - **Embedded methods**: Does the author describe a personal practice through storytelling? ("I always...", "my practice is...", "the way I do this is...") → action card candidate, even without numbered steps
+      - **Narrative insight**: Does the author describe a shift in their own understanding over time? ("I used to think... but then...") → insight card candidate
+      - **Mentioned initiatives/events**: Does the narrative reference organizations, experiments, studies, or historical moments? → event card candidate
+      - **Linguistically striking passages**: Does the author use metaphor, vivid description, or an elegant turn of phrase? → quote card candidate
    - **Timeline**: Record where this view sits in academic history — who proposed first, who revised, who opposed, who inherited
    - This top-down template complements the subsequent bottom-up scan: establish the core skeleton first, then fill gaps
 9. Update/create entity pages — choose `card_type: person` or `event` based on content, use the corresponding Card Type template. **For updates: merge new facts into existing sections, preserve all existing details, append the new source as a new `- "[[...]]"` item to the `sources` YAML list, update `updated` date.**
@@ -46,8 +55,13 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
     - Check if these related people/schools/institutions have existing wiki pages; if a person is referenced in 2+ sources but has no card, flag for creation
     - Write the results into the person card's `## 学术脉络` section
 11. Update/create concept pages — **scan for insight candidates first** (see 5 detection patterns in card-types.md), then extract terminology, action, schema, basic, index-card cards. **Same archive-before-update rule as step 6. When writing `## 关联` sections, use the cross-reference results from step 7 to establish at least one cross-source link per card.**
-12. Extract notable quotes and new words → create atom pages (only when the source contains genuinely striking quotes or domain-specific terms worth independent tracking)
-13. **Check card extraction density** — verify the extraction is thorough enough (see Card Extraction Guidelines in card-types.md)
+12. Extract notable quotes and new words → create atom pages. **Quote floor rule**: If the source page's `## 关键引用` section records 3+ key quotes, create at least one quote card. For narrative-heavy sources with strong writing style (linguistic metaphor, vivid description), target 2-3 quote cards. The `## 摘录理由` must explain the specific cognitive or aesthetic impact — this is the personal capture mechanism.
+13. **Check card extraction density** — verify the extraction is thorough enough (see Card Extraction Guidelines in card-types.md). For narrative-heavy sources, also run this narrative coverage check:
+    - Were embedded practical methods extracted as action cards? (not just numbered steps, but methods described through storytelling)
+    - Were at least 1-2 striking passages extracted as quote cards?
+    - Were mentioned initiatives/experiments/events extracted as event cards?
+    - Is there at least one insight card capturing the author's mental model shift?
+    - If all answers are "no" but the source IS narrative-heavy, re-read for these narrative-specific patterns — don't skip them just because the content isn't presented as claims.
 14. **Alias deduplication** — when a new source refers to an existing concept/entity by a different name, do NOT create a new page; instead add the variant to the existing page's `aliases` list and update its `sources` YAML list
 15. **Merge conflicts** — when updating a page with information from a new source that contradicts existing claims, mark with a conflict callout:
     ```
@@ -55,8 +69,31 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
     > [[source-a]] claims X, while [[source-b]] claims Y.
     ```
 16. Flag any contradictions with existing wiki content
-17. Prepend to `wiki/log.md` (newest first, reverse chronological) — use `## [YYYY-MM-DD] ingest | <Title>` header, then list new pages using `[[wikilink]]` format (not backtick paths), and summarize cross-source connections. For archived pages, note the archive version.
-18. **Post-ingest validation** — check for broken `[[wikilinks]]`, verify all new pages are in `index.md`, print a change summary including any archived versions
+17. **Controversy detection** — run the 6-point checklist below against the source itself (not against the wiki). These are intrinsic quality signals, not cross-source comparisons. When any signal fires, record it in the source page's `## 争议标注` section.
+
+   | # | Signal | What to check |
+   |---|--------|---------------|
+   | ① | **Preprint** | Is this an arXiv preprint not yet peer-reviewed? Check for "submitted to", "under review", absence of journal/pub venue. |
+   | ② | **Small / narrow sample** | n < 30? Single institution? Convenience sample (e.g. undergrads, MTurk)? Single demographic? |
+   | ③ | **Conflict of interest** | Author employed/funded by company whose product is evaluated? Funder has stake in the conclusion? |
+   | ④ | **Self-acknowledged limitations** | Does the paper itself list caveats (in Discussion/Limitations)? Note the key ones verbatim. |
+   | ⑤ | **Speculative claims** | Are any headline conclusions unsupported by the study's own data? Watch for "may", "could", "suggests" masking strong claims. |
+   | ⑥ | **No independent replication** | Single-lab study? Novel method not validated by others? If so, note "single study, unreplicated." |
+
+   **Important**: These signals do NOT mean the source is rejected. They mean the source is annotated so future synthesis can weigh it appropriately. A preprint with a small sample can still contain genuine insight — but it should not be treated as settled knowledge.
+
+18. Prepend to `wiki/log.md` (newest first, reverse chronological) — use `## [YYYY-MM-DD] ingest | <Title>` header, then list new pages using `[[wikilink]]` format (not backtick paths), and summarize cross-source connections. For archived pages, note the archive version.
+19. **Post-ingest validation (mandatory)** — three checks before declaring ingest complete:
+
+    19a. **Broken outgoing links** — for each newly created or updated wiki page, run:
+    ```
+    python3 tools/health.py --check-file wiki/<path>/<page>.md
+    ```
+    If any broken links are reported, either create the missing pages or fix the links. Pay special attention to `#example` references: each `[[Target]] — #example` in a `## 关联` section signals that the target entity is a concrete instance that MUST have its own wiki page. If the target doesn't exist, create the page before finishing ingest.
+
+    19b. **Index sync** — verify all new pages are listed in `wiki/index.md`.
+
+    19c. **Bilingual/zh link check** — if a display version exists at `raw/bilingual/<slug>-bilingual.md` or `raw/bilingual/<slug>-<lang>.md`, verify the `## 源文件` section has the bilingual link and the raw file has a corresponding backlink.
 
 ### Source Page Format
 
@@ -92,8 +129,30 @@ updated: YYYY-MM-DD
 ## 矛盾
 - Contradicts [[OtherPage]] on: ...
 
+## 争议标注
+<!-- Only include this section when controversy detection (step 17) fires. Omit entirely if no signals. -->
+- ① Preprint: not yet peer-reviewed — <detail>
+- ② Small sample: n=<N>, <institution/demographic> — <detail>
+- ③ Conflict of interest: <author> employed/funded by <entity> — <detail>
+- ④ Self-acknowledged limitation: "<verbatim caveat from paper>"
+- ⑤ Speculative claim: "<claim>" — unsupported by study's own data
+- ⑥ No independent replication: single-lab study, method not validated by others
+
 ## 源文件
-[[raw-filename]]
+[[raw-filename]]              # link to raw/ file
+📖 [Bilingual Version](/raw/bilingual/<filename>-bilingual.md)  # if bilingual version exists
+
+## 分析
+
+### 作者/机构学术地位
+{作者和机构的基本信息、学术梯队定位、机构级别。}
+
+### 论文整体水平
+{发表/出版类型、同行评审状态、在该领域的贡献和创新性。}
+
+### 有趣度
+- **图中心性**：在全图 N 个非源节点中度中心性排名第 X（前 X%）。{来源的连接模式和跨领域桥梁作用。}
+- **时序评价**：{发布时间、有趣度的时间函数趋势——上升/平稳/衰减。}
 ```
 
 ### Domain-Specific Templates
@@ -334,3 +393,26 @@ If the user doesn't have Python/dependencies set up, instead generate the graph 
 2. Build a node/edge list
 3. Write `graph/graph.json` directly
 4. Write `graph/graph.html` using the vis.js template
+
+### Build Conventions (build_graph.py + build_browser.py)
+
+Key behaviors that affect ingest and source file placement:
+
+**Raw source discovery** — `all_raw_pages()` scans:
+- `raw/*.md` (top-level source files)
+- `raw/<subdir>/*.md` for each subdirectory except `bilingual/` (for versioned sources with images)
+
+**Raw→wiki source matching** — Uses priority matching:
+1. **`source_file` frontmatter** (exact match) — the `source_file` field in wiki source pages determines graph linkage. Always verify this path is correct.
+2. **Filename stem fallback** — matches when `source_file` frontmatter is absent but raw filename stem matches wiki source page stem.
+
+**Display content substitution** — browser display replaces raw content with:
+- `raw/bilingual/<slug>-<lang>.md` (translation display, highest priority)
+- `raw/bilingual/<slug>-bilingual.md` (bilingual version)
+- Only the basename is used for lookup (flat directory), so nested raw files like `raw/report-v1/report.md` still find `raw/bilingual/report-<lang>.md`
+
+**Image path rewriting** — relative image references in raw/bilingual markdown are rewritten for browser display. `![](images/foo.jpg)` becomes `![](../raw/<source-dir>/images/foo.jpg)`, resolving correctly from `browser/index.html` via `file://` protocol. Only relative paths are rewritten; absolute URLs (`https://...`) are preserved.
+
+### Auto-Build Hook
+
+After a wiki file is written or edited, the PostToolUse hook in `.claude/settings.json` can automatically run `python3 tools/build_graph.py --no-infer && python3 tools/build_browser.py`. This makes graph+browser rebuild automatic after every wiki edit or ingest. The hook only triggers when the edited file is under `wiki/`. Non-wiki edits (raw source files, tools, config) do not trigger a rebuild.

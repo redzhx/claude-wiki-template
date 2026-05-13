@@ -32,7 +32,7 @@ Cards are not equal in value. The priority order for extraction:
 |-----------|-------------|-------------------|
 | General | Any text may contain | basic, action |
 | Informational | Popular science, academic, argumentative | **insight (priority)**, terminology, person, schema, event |
-| Narrative | Novel, biography, history | event, person |
+| Narrative | Novel, biography, history, long-form journalism, personal essay, memoir | event, person, insight, action, quote |
 | Aesthetic | Poetry, prose, literature | new-word, quote |
 
 > Event cards are not limited to narrative texts. **Research experiments** (e.g., EEG studies) and **historical events** (e.g., the first proposal of a theory and its background) in informational texts also fit the event card template.
@@ -110,6 +110,8 @@ Explain the core logic in your own words — why these steps work
 ```
 
 Self-validation: `## 原理` must include an original quote (`> "..." — Author`) AND explanation in your own words; steps must be executable (contain verbs); 2-7 steps.
+
+**Detection beyond numbered steps**: Action-worthy methods often appear in narrative as personal practices rather than step-by-step instructions. Signal phrases include "I always...", "my practice is...", "the way I do this is...", "over time I developed...", and similar first-person procedural descriptions. These are valid action card candidates — frame the narrative method into executable steps for the `## 步骤` section.
 
 ---
 
@@ -358,6 +360,9 @@ updated: YYYY-MM-DD
 
 # Event Name
 
+## 概述
+1-2 sentences answering: "what is this event, in a nutshell?" — person/organization did what, when, where, with what significance. A reader should understand the event from this section alone.
+
 ## 时间 (Time)
 When it happened, duration, or timeline
 
@@ -409,6 +414,8 @@ Further free-form reflections
 ```
 
 Self-validation: `## 摘录理由` is required and must specify the concrete reason; `## 原文` and attribution must not be empty; the reason must not merely restate the quote.
+
+**Floor rule for source pages**: When a source page's `## 关键引用` section has 3+ entries, extract at least one quote card. Narrative sources with strong writing style should produce 2-3 quote cards per ingest — the personal capture mechanism only works if you actually capture.
 
 **AI constraint**: AI has no "personal feelings," but can simulate from a reader's perspective. Prioritize sentences with genuine linguistic highlights or cognitive impact. When uncertain: capture more, let the reader (user) judge.
 
@@ -473,6 +480,23 @@ Classification dimension (e.g., by theme, by time, by person)
 ```
 
 Self-validation: `## 索引类型` must not be empty; at least 2 `## 条目`.
+
+#### Timeline Variant
+
+When listing milestones, historical events, or any sequence unfolding over time, use the **time prefix** format in `## 条目`:
+
+```markdown
+## 条目
+- **YYYY-MM-DD**: Event description — [[RelatedCard]]
+- **YYYY-MM**: Event description — detail without link
+- **YYYY**: Event description
+```
+
+Rules:
+- Date prefix in bold (`**YYYY-MM-DD**`) followed by colon and space
+- Entries sorted ascending (oldest first) by default; reverse chronological for recent-events-only lists
+- Optional `[[wikilink]]` at end to connect to person/event/concept cards
+- Time range spans: `**YYYY-MM** – **YYYY-MM**` for event ranges
 
 ---
 
@@ -559,6 +583,29 @@ The most common failure mode is producing only 2-3 schema cards for a chapter an
 **Anti-pattern**: merging 3-4 distinct concepts into one schema card just because they share a theme.
 **Anti-pattern**: changing a card to `schema` just because it contains a diagram/table/formula. Use the **diagram deletion test**: if removing the diagram leaves the core knowledge intact, the diagram is a supporting element, not the card's essence.
 
+### Narrative Source Extraction
+
+Narrative-heavy sources (long-form journalism, personal essays, memoirs) differ fundamentally from informational sources. Their knowledge is embedded in storytelling, not structured as claims and evidence.
+
+**Detection patterns specific to narrative sources:**
+
+| Narrative pattern | What to extract | Card type |
+|---|---|---|
+| Author describes a personal routine or method ("I always...", "My practice is...") | The method itself, framed into executable steps | action |
+| Author describes a shift in their own thinking ("I used to think... but then...") | The cognitive transformation | insight |
+| Author mentions an organization, experiment, study, or historical moment | The event/initiative as a knowledge artifact | event |
+| A sentence with striking metaphor, vivid description, or elegant phrasing | The sentence itself, with reason for selection | quote |
+| A person introduced with backstory and substantial contribution | The person profile | person |
+| A domain-specific term coined or redefined in the narrative | The term definition | terminology |
+
+**Key principle**: Narrative sources are NOT lower-value than informational sources. They often contain more memorable insights precisely because knowledge is embedded in concrete human experience. The extraction challenge is different, not easier — you must detect structured knowledge within unstructured storytelling.
+
+**Common failure modes**:
+- Skipping action card extraction because the method has no numbered steps (look for "I do X" patterns)
+- Skipping insight card extraction because the insight is told through anecdote rather than stated directly
+- Skipping event card extraction because the initiative is mentioned in passing rather than described formally
+- Creating zero quote cards for a well-written narrative source (hard rule: 2-3 quote cards per narrative ingest)
+
 ### Image Preservation
 
 Source images (format `![](image-file)`) carry important knowledge. When creating wiki cards:
@@ -591,6 +638,13 @@ After writing the source page, go through this checklist **in priority order**:
 6. **Every research experiment, study, or historical event** → event card candidate
 7. **Every striking sentence worth remembering** → quote card candidate (better to capture too many)
 8. **Every domain-specific jargon introduced** → new-word card candidate
+
+9. **For narrative-heavy sources (long-form journalism, personal essays, memoirs), additionally check**:
+   - **Embedded methods**: Any personal practice described through storytelling → action card (even without numbered steps)
+   - **Narrative insight**: Any described change in the author's own understanding → insight card
+   - **Mentioned initiatives/events**: Any organizations, experiments, or historical moments referenced → event card
+   - **Linguistic highlights**: Any particularly striking phrasing, metaphor, or elegant expression → quote card
+   - Run this check AFTER the standard checklist; narrative sources have BOTH informational content AND story-embedded knowledge
 
 **Post-extraction self-check**:
 - Did I produce at least one insight card? If not, re-read the source specifically for implicit reversals.

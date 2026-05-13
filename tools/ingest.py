@@ -8,7 +8,7 @@ Ingest a source document into the Cognitive Atlas.
 
 Usage:
     python tools/ingest.py <path-to-source>
-    python tools/ingest.py raw/articles/my-article.md
+    python tools/ingest.py raw/fetched/my-article.md
     python tools/ingest.py report.pdf                  # auto-converts to .md
     python tools/ingest.py slides.pptx notes.docx       # batch, mixed formats
     python tools/ingest.py raw/mixed/ --no-convert      # skip auto-conversion
