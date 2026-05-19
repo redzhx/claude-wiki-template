@@ -421,22 +421,28 @@ def check_archive_integrity() -> dict:
             expected = f"{page_stem}-V{version}.md"
             referenced.add(expected)
 
+    # Build flat set of all archive files (across mirrored subdirs)
+    existing = {}
+    for sub in archive_dir.iterdir():
+        if not sub.is_dir():
+            continue
+        for f in sub.iterdir():
+            if f.is_file() and f.suffix == ".md":
+                existing[f.name] = f
+
     # Check each referenced file exists
     for ref in sorted(referenced):
-        if not (archive_dir / ref).exists():
-            # Look up which page references it
+        if ref not in existing:
             missing_files.append({
                 "archive_file": ref,
-                "issue": f"referenced in revisions but missing from wiki/archive/",
+                "issue": "referenced in revisions but missing from wiki/archive/",
             })
 
     # Check for orphaned files in archive (not referenced by any live page)
-    for f in sorted(archive_dir.iterdir()):
-        if not f.is_file() or f.suffix != ".md":
-            continue
-        if f.name not in referenced:
+    for name, f in sorted(existing.items()):
+        if name not in referenced:
             orphaned_files.append({
-                "archive_file": f.name,
+                "archive_file": name,
                 "issue": "exists in wiki/archive/ but not referenced by any live page's revisions field",
             })
 

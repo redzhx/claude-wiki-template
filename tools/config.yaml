@@ -82,6 +82,7 @@ valid_card_types:
 # Add translations for your wiki's language
 type_display_names:
   # English
+  - overview
   - source
   - entity
   - concept
@@ -100,6 +101,7 @@ type_display_names:
   - quote
   - new-word
   # Chinese (卡片大法 preset)
+  - 总览
   - 源文件
   - 实体
   - 概念
@@ -124,6 +126,7 @@ relations_header: "## 关联"
 # ── Graph Colors ──────────────────────────────────────────────────────
 # Colors for node types in the graph visualization
 type_colors:
+  overview: "#00BCD4"
   source: "#4CAF50"
   entity: "#2196F3"
   concept: "#FF9800"

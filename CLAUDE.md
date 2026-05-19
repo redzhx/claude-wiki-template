@@ -39,6 +39,24 @@ All wiki page body text is written in **English** by default. To change this, ed
 
 When a term is widely known by its English name (e.g., "AGI", "Transformer"), keep English as primary and add translation in parentheses or `aliases`.
 
+**Browser display**: When the `title` is in one language and `aliases` contains a translation in another script, the card browser automatically renders `"Original (Translation)"` bilingual titles. Always include a translation in `aliases` for cross-language content.
+
+---
+
+## Domain Context
+
+<!-- CONFIGURABLE: Define what your wiki tracks. This section helps Claude understand the scope
+     when reading, querying, and synthesizing content. Each domain anchors on a dimension
+     of the subject being tracked. -->
+
+| Domain | Tracking |
+|--------|----------|
+| Domain 1 | Sub-topics to track |
+| Domain 2 | Sub-topics to track |
+| Domain 3 | Sub-topics to track |
+
+When ingesting, tag pages with the most specific domain tags available (see domain taxonomy in `.claude/schema/page-format.md`).
+
 ---
 
 ## Slash Commands
@@ -50,17 +68,13 @@ When a term is widely known by its English name (e.g., "AGI", "Transformer"), ke
 | `/wiki-synthesis` | `synthesize [[PageName]]` or `synthesize "theme" from [[Card1]], [[Card2]]` |
 | `/wiki-health` | `health` (fast, every session) |
 | `/wiki-lint` | `lint the wiki` (expensive, periodic) |
-| `/wiki-graph` | `build the knowledge graph` |
-| `/wiki-bilingual` | `bilingual raw/article-foo.md` (if bilingual feature enabled) |
+| `/wiki-bilingual` | `bilingual raw/article-foo.md` |
 
 Or just describe what you want in plain language.
 
 ---
 
-## Bilingual Reading (Optional)
-
-<!-- CONFIGURABLE: Enable this section if your wiki ingests sources in a non-primary language
-     and you want parallel bilingual reading versions. -->
+## Bilingual Reading
 
 Create bilingual (native/primary language + original) versions of source files for personal reading. Bilingual files live in `raw/bilingual/` and are **never ingested** into the wiki — they are reading aids only.
 
@@ -74,39 +88,42 @@ Create bilingual (native/primary language + original) versions of source files f
 
 ### Bilingual File Format
 
-Bilingual files are named `<original-stem>-bilingual.md`. See `.claude/commands/wiki-bilingual.md` for the full specification. Key elements:
+Bilingual files are named `<original-stem>-bilingual.md`. Pure native language versions use `-<lang>.md` suffix (e.g., `-zh.md` for Chinese). See `.claude/commands/wiki-bilingual.md` for full specification. Key elements:
 - YAML frontmatter with `original`, `original_url`, `skip_ingest: true`
 - Bilingual H1
 - Body: translated paragraph (normal text) followed by `> original` (blockquote)
 - Link back to original in header blockquote
 
+### Link Strategy
+
+Original files get a bidirectional link to their bilingual version:
+- `raw/` files: `> 📖 [Bilingual Version](bilingual/<name>-bilingual.md)` appended at bottom
+
 ### Browser Display
 
-Both `build_graph.py` and `build_browser.py` independently check for display content substitution for raw nodes that have a bilingual/translation file at `raw/bilingual/<slug>-<lang>.md`. The browser is a derived view of `graph/graph.json` — every ingest, bilingual creation, or card change must be followed by a graph rebuild.
+`build_browser.py` reads wiki files directly and generates the card browser.
 
----
+**Source pages** (`wiki/sources/`): Summary only. Links to the full bilingual/original text point to standalone `raw_source` cards for reading. Wiki pages form the knowledge graph with edges from wikilinks.
 
-## Directory Layout
+**Raw source library** (`type: raw_source`): Standalone cards for every `raw/*.md` file. No graph edges — these are a browsable library sorted by date/type. Content uses bilingual > native > original preference. Each card links to its `sources/X` summary page. Filter by type via the "📰 原文" sidebar button.
 
-## Slash Commands
+Content is sharded: `browser/data.js` contains metadata only (labels, previews, connections — everything needed for the card grid). Full markdown is stored in two tiers:
+- `browser/content/bundle.json` — combined JSON object `{nodeId: markdown}` for fast bulk loading (~2-3MB, gzipped ~500KB)
+- `browser/content/<id-slug>.json` — individual per-node shards as fallback (loaded individually when bundle misses)
 
-| Command | What to say |
-|---|---|
-| `/wiki-ingest` | `ingest raw/my-article.md` |
-| `/wiki-query` | `query: what are the main themes?` |
-| `/wiki-synthesis` | `synthesize [[PageName]]` or `synthesize "theme" from [[Card1]], [[Card2]]` |
-| `/wiki-health` | `health` (fast, every session) |
-| `/wiki-lint` | `lint the wiki` (expensive, periodic) |
-| `/wiki-graph` | `build the knowledge graph` |
+The browser loads `bundle.json` once after page init, making all subsequent card selections instant.
 
-Or just describe what you want in plain language.
+- `python tools/build_browser.py` rebuilds the browser
+- `/wiki-bilingual`: runs `build_browser.py` automatically at the end
+- Every ingest or card change should be followed by a browser rebuild to appear in the browser (auto-build hook handles this)
 
 ---
 
 ## Directory Layout
 
 ```
-raw/          # Manual source documents only (e.g., books, reports, PDFs)
+raw/          # Source documents: papers, articles, books, reports, etc.
+              # Each file gets a raw_source card in the browser (sorted library view)
   <source-dir>/   # Versioned subdirectories for sources with embedded images
   bilingual/  # Bilingual/translation reading files (derived, never ingested)
 wiki/         # Claude owns this layer entirely
@@ -120,21 +137,21 @@ wiki/         # Claude owns this layer entirely
   syntheses/  # Synthesis cards — structured multi-card analysis
   query/      # Saved query answers — Q&A format
   types/      # Type & card_type definition pages (linked from frontmatter)
-  archive/    # Versioned snapshots of updated pages (excluded from graph)
-graph/        # Auto-generated graph data
-  graph.html  # Interactive graph visualization
+  archive/    # Versioned snapshots of updated pages (mirrors wiki subdirs, excluded from graph)
 browser/      # Card browser web app (static, filterable)
   index.html  # Main card browser — open in browser to explore
-changelog.md  # Project-level changes: graph rebuilds, tool updates (not wiki content)
+  data.js     # Node metadata + edges (auto-generated, no markdown body)
+  content/    # Per-node markdown shards (wiki + raw_source, auto-generated, lazy-loaded by browser)
+changelog.md  # Project-level changes (not wiki content)
 tools/        # Standalone Python scripts
-  build_graph.py  # Knowledge graph generation
-  build_browser.py # Card browser data generation
+  build_browser.py # Card browser data generation (reads wiki directly)
+  build_graph.py  # [DEPRECATED] Knowledge graph generation + vis.js visualization
   health.py       # Structural checks (deterministic, no LLM calls)
   lint.py         # Content quality checks (uses LLM for semantic analysis)
 .claude/schema/   # Claude Code workflow specs (not wiki content)
   card-types.md   # 11 card type templates + extraction guidelines
-  page-format.md  # Frontmatter, 关联 format, domain tags, index/log format
-  workflows.md    # Full workflow steps for ingest/query/synthesis/lint/health/graph
+  page-format.md  # Frontmatter, relations format, domain tags, index/log format
+  workflows.md    # Full workflow steps for ingest/query/synthesis/lint/health
 ```
 
 <!-- CONFIGURABLE: Rename subdirectories and card types to match your own system.
@@ -150,12 +167,15 @@ Format: `<type-prefix>[-year]-<short-description>.md`
 
 | Type | Prefix | Date in filename? | Example |
 |------|--------|-------------------|---------|
-| Academic Paper | `paper` | Year required | `paper-2025-technical-report.md` |
+| Academic Paper | `paper` | Year required | `paper-2025-gpt4-technical-report.md` |
 | Article / Blog | `article` | No | `article-example-topic.md` |
 | Book / Chapter | `book` | No | `book-example-ch03-deliberate-practice.md` |
-| Lecture Notes | `lecture` | No | `lecture-cogsci-week05.md` |
+| Industry Report | `report` | No | `report-organization-title.md` |
 | Policy Document | `policy` | No | `policy-eu-regulation.md` |
-| Report | `report` | No | `report-organization-title.md` |
+| Think Tank Output | `thinktank` | No | `thinktank-org-statement.md` |
+
+<!-- CONFIGURABLE: Add/remove source types as needed for your wiki's domain.
+     Common additional types: lecture, whitepaper, tutorial, case-study -->
 
 Rules:
 - All lowercase kebab-case
@@ -196,17 +216,57 @@ After all chapters are ingested, use the Synthesis Workflow to produce a whole-b
 
 ### Source File Path Validation
 - After creating or editing any source page (`wiki/sources/<slug>.md`), verify the `source_file` field in YAML frontmatter exists on disk as an actual file under `raw/`.
-- A mismatch causes the graph builder to fail silently when linking source pages to raw nodes.
+- A mismatch causes `build_browser.py` to fail silently when merging full-text content into source nodes.
 
 ### Auto-Build Hook
-- `.claude/settings.json` can have a PostToolUse hook that auto-runs graph+browser rebuild after every Write/Edit to files under `wiki/`.
-- This makes graph+browser rebuild automatic after wiki edits, card creation, and ingests. Non-wiki edits (tools, raw sources, config) do NOT trigger the hook.
-- For semantic inference (Pass 2), manually run `python tools/build_graph.py` (without `--no-infer`) or `/wiki-graph`.
+- `.claude/settings.json` has a PostToolUse hook that auto-runs `build_browser.py` after every Write/Edit to files under `wiki/`.
+- This makes browser rebuild automatic after wiki edits, card creation, and ingests. Non-wiki edits (tools, raw sources, config) do NOT trigger the hook.
 
 ### Bilingual Filename Normalization
-- Raw filenames may contain spaces; bilingual filenames always use hyphens.
-- Both `build_graph.py` and `build_browser.py` should normalize spaces→hyphens when looking up bilingual files.
-- Nested raw files (e.g., `raw/report-v1/report.md`) are looked up by basename only in `raw/bilingual/`.
+- Raw filenames may contain spaces (e.g., `paper-2026-Title With Spaces-1234.md`); bilingual filenames always use hyphens (`paper-2026-Title-With-Spaces-1234-bilingual.md`).
+- `build_browser.py` has a `bilingual_path_for()` function that normalizes spaces→hyphens and checks for both `-<lang>.md` and `-bilingual.md` suffixes (`-<lang>` takes priority). Any new tool that looks up bilingual files must apply the same normalization.
+- arXiv filenames may have a version suffix (e.g., `2602.20014v1`). The `bilingual_path_for()` fallback strips `.v1`/`.v2` so version and versionless stem lookups both work.
+- Nested raw files (e.g., `raw/report-v1/report.md`) are looked up by basename only in `raw/bilingual/` — the flat directory structure means `raw/report-v1/report.md` finds `raw/bilingual/report-<lang>.md`.
+
+---
+
+## Deployment
+
+The card browser is deployed as a static site on **Cloudflare Pages** at the project's custom domain.
+
+### Key Facts
+
+| Item | Detail |
+|---|---|
+| **Platform** | Cloudflare Pages (free tier) |
+| **Private repo** | Supported (GitHub Pages requires public repos) |
+| **Custom domain** | Subdomain of the project's domain (e.g., `project.your-domain.com`) |
+| **Build output** | `browser/` directory (fully static, no build step on CI) |
+| **Auto-deploy** | On push to production branch |
+| **SSL** | Auto-provisioned and auto-renewed by Cloudflare |
+| **ICP备案** | Not required with Cloudflare infrastructure |
+
+### Build Lifecycle
+
+1. `python tools/build_browser.py` generates all browser files locally:
+   - `browser/data.js` — metadata + edges
+   - `browser/content/*.json` — individual markdown shards
+   - `browser/content/bundle.json` — combined bundle for fast loading
+2. The PostToolUse hook auto-runs the build after every wiki edit
+3. Cloudflare Pages auto-deploys when changes are pushed to the repo
+
+### SEO & Privacy
+
+- `browser/index.html` includes `<meta name="robots" content="noindex, nofollow">` to prevent search engine indexing
+- `browser/robots.txt` has `Disallow: /` for all crawlers
+
+### Performance Optimizations
+
+- **Bundle loading**: `bundle.json` (~2-3MB, gzipped ~500KB) loaded once after init — eliminates per-card HTTP round-trips
+- **Security**: All external links get `rel="noopener noreferrer"` to prevent tab-napping and referer leakage
+- **Mobile responsive**: Panel switches to full-screen overlay at ≤860px viewport width
+
+Full workflow details in `.claude/schema/workflows.md`.
 
 ---
 
@@ -217,9 +277,9 @@ Full steps for each workflow are in `.claude/schema/workflows.md`. Read it befor
 ### Ingest
 Triggered by: *"ingest <file>"* or `/wiki-ingest`
 **Read `.claude/schema/card-types.md` and `.claude/schema/page-format.md` before starting.**
-High-level: read source → write source page → update index/overview → archive existing pages → create/update entity+concept+atom cards → update log → validate → **rebuild graph + browser**.
-Finish with: `python tools/build_graph.py --no-infer && python tools/build_browser.py` (fast path), or a full `/wiki-graph` for semantic inference.
-**Note**: A PostToolUse hook in `.claude/settings.json` can automatically run graph+browser rebuild after every wiki file write/edit. Manual build is still needed when only raw source files or bilingual content changes (hook only triggers on `wiki/` path edits).
+High-level: read source → write source page → update index/overview → archive existing pages → create/update entity+concept+atom cards → **add `## 来源贡献` for multi-source cards** → update log → validate → **rebuild browser**.
+Finish with: `python tools/build_browser.py`.
+**Note**: A PostToolUse hook in `.claude/settings.json` automatically runs `build_browser.py` after every wiki file write/edit. Manual build is still needed when only raw source files or bilingual content changes (hook only triggers on `wiki/` path edits).
 
 ### Query
 Triggered by: *"query: <question>"* or `/wiki-query`
@@ -232,18 +292,13 @@ High-level: collect related cards → choose grouping dimension → extract verb
 ### Health
 Triggered by: *"health"* or `/wiki-health`
 Run: `python tools/health.py` — zero LLM calls, safe every session.
-Checks: empty/stub pages, frontmatter integrity, index sync, log coverage, broken wikilinks, missing relations sections, raw source files missing `published` date.
+Checks: empty/stub pages, frontmatter integrity, index sync, log coverage, broken wikilinks, missing relations sections, **raw source files missing `published` date**.
 
 ### Lint
 Triggered by: *"lint the wiki"* or `/wiki-lint`
 Run: `python tools/lint.py` — uses LLM, run every 10-15 ingests.
 
-### Graph
-Triggered by: *"build the knowledge graph"* or `/wiki-graph`
-Run: `python tools/build_graph.py` — outputs `graph/graph.json` + `graph/graph.html`.
-Appends to `changelog.md` (not `wiki/log.md`).
-**Auto-build**: A PostToolUse hook can trigger graph+browser rebuild after every wiki file change. The `--no-infer` flag is used in auto-build mode for speed; the full build with semantic inference requires manual `/wiki-graph`.
-
 ### Build Browser
 Triggered by: *"build the browser"* or `python tools/build_browser.py`
-Generates `browser/data.js` from graph data for the card browser web app.
+Reads wiki files directly, generates `browser/data.js` (metadata + edges) and `browser/content/*.json` (per-node markdown shards). Raw source files get standalone `raw_source` cards accessible from source page links.
+**Auto-build**: A PostToolUse hook triggers browser rebuild after every wiki file change.

@@ -52,15 +52,15 @@ Translation paragraph content, maintaining paragraph-by-paragraph correspondence
 Translation paragraph continues...
 ```
 7. Add a reference link from the original to the bilingual version:
-   - For `raw/` files: append `> Bilingual Version: [bilingual/<filename>-bilingual.md](bilingual/<filename>-bilingual.md)` at the very end
+   - For `raw/` files: append `> 📖 [Bilingual Version](bilingual/<filename>-bilingual.md)` at the very end
    - Skip this step if the link already exists
 8. **Update the wiki source page** (if it exists) so the bilingual link appears in the browser:
    - Check if `wiki/sources/<same-slug>.md` exists
-   - If yes, add a bilingual link to the `## 源文件` section if not already present
+   - If yes, add `📖 [Bilingual Version](/raw/bilingual/<filename>-bilingual.md)` to the `## 源文件` section if not already present
    - Update the `updated` date in the frontmatter
-9. **Rebuild graph + browser**:
+9. **Rebuild browser** (`build_browser.py` reads wiki files directly):
    ```bash
-   python tools/build_graph.py --no-infer --browser
+   python tools/build_browser.py
    ```
 10. Summarize: what file was created, line count, any notable translation decisions
 
@@ -69,5 +69,5 @@ Translation paragraph continues...
 1. Resolve $ARGUMENTS to a list of file paths (use bash glob or ls)
 2. Present the list to the user and ask for confirmation
 3. For each file in the list, follow the Single File workflow steps 1-8
-4. Run `python tools/build_graph.py --no-infer --browser` to rebuild graph + browser
+4. Run `python tools/build_browser.py` to rebuild the card browser
 5. Provide a summary table: | File | Status | Lines | Notes |

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# [DEPRECATED] This tool is no longer used. Use tools/build_browser.py instead.
+# build_browser.py reads wiki files directly and does not require graph.json.
+# This file is kept for reference only.
 from __future__ import annotations
 
 """

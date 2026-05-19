@@ -1,5 +1,27 @@
-.DS_Store
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+
+# Build artifacts / generated files
+card-browser.png
+
+# Screenshots
+browser-*.png
+browser-snapshot.md
+page-*.yml
+
+# Test artifacts
+.playwright-mcp/
+
+# macOS
+.DS_Store
+.cache.json
+.inferred_edges.jsonl
+
+# Obsidian
+.obsidian/
+
+# Virtual environments
 .venv/
 .env

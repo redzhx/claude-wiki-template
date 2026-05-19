@@ -1,31 +1,45 @@
-Build the wiki knowledge graph.
+Build the wiki knowledge graph [DEPRECATED].
+
+This command is deprecated. Use `build_browser.py` instead, which includes all graph edge functionality directly without the intermediate `graph/graph.json` file.
 
 Usage: /wiki-graph
 
-Run: python tools/build_graph.py
+For backward compatibility only:
+  python tools/build_graph.py
+
+## Recommended: Build the Card Browser Instead
+
+The card browser (`browser/index.html`) includes full graph functionality:
+- Parses all `[[wikilinks]]` → deterministic graph edges (no intermediate JSON file)
+- Generates node metadata, previews, and connection data
+- Outputs `browser/data.js` + `browser/content/` markdown shards
+- Excludes `wiki/archive/` and `wiki/types/`
+
+To build the browser:
+```bash
+python tools/build_browser.py
+```
 
 This script:
-- Pass 1: Parses all [[wikilinks]] → deterministic EXTRACTED edges
-- Pass 2: Infers implicit relationships → INFERRED edges with confidence scores
-- Runs Louvain community detection
-- Outputs graph/graph.json + graph/graph.html
-- Excludes wiki/archive/ and wiki/types/
+- Reads wiki files directly (no `graph.json` dependency)
+- Builds complete edge graph from `[[wikilinks]]`
+- Generates content bundle for instant card loading
+- Creates standalone `raw_source` cards for every source file
 
-To also rebuild the card browser data in one command:
-  python tools/build_graph.py --browser
+## Auto-Build Hook
 
-Or skip semantic inference for speed:
-  python tools/build_graph.py --no-infer
+The PostToolUse hook in `.claude/settings.json` automatically runs `build_browser.py` after every wiki file edit, so manual rebuilds are rarely needed.
 
-If the above fails (missing dependencies), build the graph manually:
+---
 
-1. Use Grep to find all [[wikilinks]] across every file in wiki/ (excluding archive/ and types/)
-2. Build a nodes list: one node per wiki page, with id=relative-path, label=title, type from frontmatter
-3. Build an edges list: one edge per [[wikilink]], tagged EXTRACTED
-4. Infer additional implicit relationships between pages not captured by wikilinks — tag these INFERRED with a confidence score (0.0–1.0); tag low-confidence ones AMBIGUOUS
-5. Write graph/graph.json with {nodes, edges, built: today}
-6. Write graph/graph.html as a self-contained vis.js page (nodes colored by type, edges colored by type, interactive, searchable)
+## Legacy Graph Build (Deprecated)
 
-After building, summarize: node count, edge count, breakdown by type, and the most connected nodes (hubs).
+`build_graph.py` is preserved for backward compatibility but no longer actively maintained:
 
-Append to changelog.md: ## [date] graph | Knowledge graph rebuilt
+```bash
+python tools/build_graph.py              # Full build with semantic inference
+python tools/build_graph.py --no-infer   # Skip semantic inference for speed
+python tools/build_graph.py --browser    # Build graph + browser data in one command
+```
+
+Legacy output: `graph/graph.json` + `graph/graph.html`

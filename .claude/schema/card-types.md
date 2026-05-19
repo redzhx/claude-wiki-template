@@ -497,6 +497,7 @@ Rules:
 - Entries sorted ascending (oldest first) by default; reverse chronological for recent-events-only lists
 - Optional `[[wikilink]]` at end to connect to person/event/concept cards
 - Time range spans: `**YYYY-MM** – **YYYY-MM**` for event ranges
+- The "Situation" field can use specific dates, or relative epoch descriptions when exact dates are unknown
 
 ---
 

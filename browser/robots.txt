@@ -1,0 +1,5 @@
+# robots.txt for Knowledge Wiki
+# Private wiki - prevent search engine indexing
+
+User-agent: *
+Disallow: /

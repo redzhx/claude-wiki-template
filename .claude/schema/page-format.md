@@ -23,6 +23,7 @@ sources:
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 revisions: []                 # archived versions, e.g. ["[[PageName-V1]]", "[[PageName-V2]]"]
+score: 1-10                    # optional quality/insight rating, displayed as colored badge
 ---
 
 # Page Title
@@ -32,12 +33,30 @@ revisions: []                 # archived versions, e.g. ["[[PageName-V1]]", "[[P
 - `card_type` determines the template and self-validation rules — links to `wiki/types/` definition page
 - `card_type` is required for entity, concept, and atom pages; omit for source and synthesis pages
 - `aliases` lists alternative names for this page (e.g., translations, abbreviations, synonyms). Obsidian treats aliases as valid link targets — `[[alias]]` will resolve to this page. When ingesting new sources that reference an existing concept by a different name, add the variant to `aliases` instead of creating a duplicate page.
+- **Bilingual titles**: If the `title` is in one language, include a translation in `aliases`. The browser build script detects the first alias containing characters from a different script and displays the title as `"Original (Translation)"` automatically.
 - `sources` is a YAML list of `[[wikilink]]` entries pointing to source pages. Single source uses one list item; multiple sources use additional `- "..."` lines. Each update appends the new source to this list (no duplicates).
 - `created` is the date the wiki page was first created; `updated` is the date of last modification
 - `revisions` lists archived versions in `wiki/archive/` (e.g., `["[[CognitiveDebt-V1]]"]`). Placed in YAML so graph builders only scan body wikilinks, keeping archive nodes out of the knowledge graph. Omit this field on first creation. **Once the page is updated with information from a new source, `revisions` MUST contain the archived version reference.**
 - Every page starts with `# Title` as the first line after frontmatter, matching the `title` field
 
 Use `[[PageName|DisplayName]]` wikilinks to link to other wiki pages. The pipe alias renders display text while the link target remains the page name.
+
+---
+
+## Source Contributions (来源贡献)
+
+When a card synthesizes content from multiple sources, add a `## 来源贡献` section to describe what each source contributed. This is especially useful for concept and synthesis cards built from 3+ sources.
+
+```markdown
+## 来源贡献
+- [[paper-2025-gpt4-report|GPT-4 Technical Report]] — 提供了模型能力和评估基准数据
+- [[article-anthropic-safety|Anthropic Safety Approach]] — #backs 提供了安全分类框架的具体案例
+```
+
+Format:
+- `- [[SourcePage|Display]] — description of what this source contributed`
+- Relationship tags (`#extends`, `#backs`, etc.) are optional but recommended when the contribution has a clear conceptual relationship
+- Position: after the main body, before `## 关联`
 
 ---
 
@@ -158,8 +177,19 @@ tags: [psychology, edu-psych, education]
 | **business** | `trade` | Trade |
 | | `economy` | Economy |
 
+### Special Source Tags
+
+| Tag | Usage |
+|-----|-------|
+| `source:arxiv` | Academic paper from arXiv |
+| `source:blog` | AI lab or industry blog post |
+| `source:policy` | Government or think tank policy document |
+| `source:report` | Industry or academic report |
+| `source:news` | News article on developments |
+
 **Tagging rules:**
 - Always include at least one domain tag
 - Add sub-tags for specificity; a page can have multiple sub-tags across domains
 - When content spans domains (e.g., educational psychology), tag both: `[psychology, edu-psych, education]`
 - New sub-tags may be created as needed, but always nest under an existing domain
+- Source tags (e.g., `source:arxiv`) are optional but recommended for traceability

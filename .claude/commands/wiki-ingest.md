@@ -24,7 +24,7 @@ Follow the Ingest Workflow defined in CLAUDE.md exactly:
 14. Flag any contradictions with existing wiki content
 15. Append to wiki/log.md: ## [today's date] ingest | <Title>
 16. **Post-ingest validation** — check for broken `[[wikilinks]]`, verify all new pages are in `index.md`
-17. **Rebuild graph + browser**: `python tools/build_graph.py --no-infer --browser`
+17. **Rebuild browser**: `python tools/build_browser.py` (auto-runs via PostToolUse hook after wiki file edits)
 
 Card type selection guide (refer to CLAUDE.md Card Type Guide for full templates):
 - Person mentioned → person card in entities/

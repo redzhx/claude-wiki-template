@@ -13,26 +13,27 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
 
 ### Steps (in order)
 
-0. **Normalize raw filename** — If the source file path contains spaces, rename it with hyphens before proceeding (e.g., `"The Case.md"` → `"The-Case.md"`). Then update the corresponding bilingual file's `original` YAML field (if a bilingual file exists) and the raw file's bilingual backlink to reflect the new filename. This ensures the bilingual lookup in `build_graph.py`/`build_browser.py` matches correctly.
+0. **Normalize raw filename** — If the source file path contains spaces, rename it with hyphens before proceeding (e.g., `"The Case.md"` → `"The-Case.md"`). Then update the corresponding bilingual file's `original` YAML field (if a bilingual file exists) and the raw file's bilingual backlink to reflect the new filename. This ensures the `bilingual_path_for()` lookup in `build_browser.py` matches correctly.
 
 1. Read the source document fully using the Read tool (auto-convert if non-markdown)
 2. Read `wiki/index.md` and `wiki/overview.md` for current wiki context
 3. Write `wiki/sources/<slug>.md` — use the Source Page Format below. **If the raw file has a bilingual reference link at bottom, include the bilingual link in the `## 源文件` section.**
-4. **`source_file` path — critical for graph linking** — the graph builder (`build_raw_edges()`) uses the `source_file` frontmatter to match raw files to wiki source pages. After writing the source page:
+4. **Bilingual title alias** — If the source title is in one language, add a translation to the `aliases` frontmatter field. This enables the browser to display bilingual titles automatically. Apply this to all subsequently created cards (concepts, entities, atoms) as well.
+5. **`source_file` path — critical for full-text merging** — `build_browser.py` uses the `source_file` frontmatter to find the raw file and merge its full text (bilingual when available) into the source node for browser display. After writing the source page:
    - Check that `raw/<path>` from `source_file` is an actual file on disk. Fix if mismatched.
-   - **Subdirectory convention for sources with images**: Some sources (e.g., PDFs converted to markdown with embedded images) live in `raw/<versioned-dir>/` rather than directly in `raw/`. In this case, `source_file` must be `raw/<versioned-dir>/<filename>.md`. This lets the graph builder find the file (it scans subdirectories) and correctly rewrite image paths for browser display. Example: `source_file: "raw/report-v1/report.md"`
-5. Update `wiki/overview.md` — revise synthesis if warranted
-6. **Check for existing pages that will be updated** — for each entity/concept/atom that this new source will add information to, check if a wiki page already exists. If yes, **archive it first** before modifying:
-   1. Copy the current page to `wiki/archive/{Name}-V{N}.md` (N = next version number; start at V1, increment for each update)
+   - **Subdirectory convention for sources with images**: Some sources (e.g., PDFs converted to markdown with embedded images) live in `raw/<versioned-dir>/` rather than directly in `raw/`. In this case, `source_file` must be `raw/<versioned-dir>/<filename>.md`. This lets `build_browser.py` find the file (it scans subdirectories) and correctly rewrite image paths for browser display. Example: `source_file: "raw/report-v1/report.md"`
+6. Update `wiki/overview.md` — revise synthesis if warranted
+7. **Check for existing pages that will be updated** — for each entity/concept/atom that this new source will add information to, check if a wiki page already exists. If yes, **archive it first** before modifying:
+   1. Copy the current page to `wiki/archive/{type}/{Name}-V{N}.md` (e.g. `wiki/archive/concepts/CognitiveDebt-V1.md`; N = next version number; start at V1, increment for each update)
    2. Add `archived: true` to the archived file's YAML frontmatter
    3. Add the archived version to the current page's `revisions` list (e.g., `revisions: ["[[CognitiveDebt-V1]]"]`)
-   4. Then proceed to update the current page per steps 7-8 below
-7. **Cross-reference scan** — before writing any new cards, search the existing wiki for terms/concepts/entities that overlap with key terms from the source. Use `grep -rl "term\|alias" wiki/concepts/ wiki/entities/` for each major concept. For each match found:
+   4. Then proceed to update the current page per steps 8-9 below
+8. **Cross-reference scan** — before writing any new cards, search the existing wiki for terms/concepts/entities that overlap with key terms from the source. Use `grep -rl "term\|alias" wiki/concepts/ wiki/entities/` for each major concept. For each match found:
    - Read the existing card to understand its claims and boundaries
    - Decide the relationship type: #backs / #challenges / #extends / #applies
    - Note these candidates for use in new cards' `## 关联` sections
    - Pay special attention to **potential contradictions** (#challenges candidates): does the new source disagree with an existing card on any claim?
-8. **Top-down extraction framework** — before writing any cards, run this extraction template in priority order:
+9. **Top-down extraction framework** — before writing any cards, run this extraction template in priority order:
    1. **Core insight定位**: Identify the source's core insight (5 detection patterns in card-types.md). A book/chapter's central claim is the biggest insight card.
    2. **Evidence tracing**: What key evidence supports the core insight? Each piece maps to a term/concept → terminology card
    3. **Person tracking**: Who proposed each piece of evidence/concept? → person card (if existing, update academic lineage)
@@ -46,30 +47,31 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
       - **Linguistically striking passages**: Does the author use metaphor, vivid description, or an elegant turn of phrase? → quote card candidate
    - **Timeline**: Record where this view sits in academic history — who proposed first, who revised, who opposed, who inherited
    - This top-down template complements the subsequent bottom-up scan: establish the core skeleton first, then fill gaps
-9. Update/create entity pages — choose `card_type: person` or `event` based on content, use the corresponding Card Type template. **For updates: merge new facts into existing sections, preserve all existing details, append the new source as a new `- "[[...]]"` item to the `sources` YAML list, update `updated` date.**
-10. **Person lineage tracing** — for each person mentioned in the source, trace their academic genealogy:
+10. Update/create entity pages — choose `card_type: person` or `event` based on content, use the corresponding Card Type template. **For updates: merge new facts into existing sections, preserve all existing details, append the new source as a new `- "[[...]]"` item to the `sources` YAML list, update `updated` date.**
+11. **Person lineage tracing** — for each person mentioned in the source, trace their academic genealogy:
     - Who is this person's **teacher/influencer**? → #extends
     - Who are this person's **collaborators**? → #backs
     - Who are this person's **debate opponents**? → #challenges
     - What **school/institution/journal** are they affiliated with? → #backs
     - Check if these related people/schools/institutions have existing wiki pages; if a person is referenced in 2+ sources but has no card, flag for creation
     - Write the results into the person card's `## 学术脉络` section
-11. Update/create concept pages — **scan for insight candidates first** (see 5 detection patterns in card-types.md), then extract terminology, action, schema, basic, index-card cards. **Same archive-before-update rule as step 6. When writing `## 关联` sections, use the cross-reference results from step 7 to establish at least one cross-source link per card.**
-12. Extract notable quotes and new words → create atom pages. **Quote floor rule**: If the source page's `## 关键引用` section records 3+ key quotes, create at least one quote card. For narrative-heavy sources with strong writing style (linguistic metaphor, vivid description), target 2-3 quote cards. The `## 摘录理由` must explain the specific cognitive or aesthetic impact — this is the personal capture mechanism.
-13. **Check card extraction density** — verify the extraction is thorough enough (see Card Extraction Guidelines in card-types.md). For narrative-heavy sources, also run this narrative coverage check:
+12. Update/create concept pages — **scan for insight candidates first** (see 5 detection patterns in card-types.md), then extract terminology, action, schema, basic, index-card cards. **Same archive-before-update rule as step 7. When writing `## 关联` sections, use the cross-reference results from step 8 to establish at least one cross-source link per card.**
+13. **Source Contributions** — For cards with 2+ sources (entity, concept, atom), write a `## 来源贡献` section before `## 关联`. Describe what each source contributed to the card. Single-source cards skip this. See `page-format.md` for format.
+14. Extract notable quotes and new words → create atom pages. **Quote floor rule**: If the source page's `## 关键引用` section records 3+ key quotes, create at least one quote card. For narrative-heavy sources with strong writing style (linguistic metaphor, vivid description), target 2-3 quote cards. The `## 摘录理由` must explain the specific cognitive or aesthetic impact — this is the personal capture mechanism.
+15. **Check card extraction density** — verify the extraction is thorough enough (see Card Extraction Guidelines in card-types.md). For narrative-heavy sources, also run this narrative coverage check:
     - Were embedded practical methods extracted as action cards? (not just numbered steps, but methods described through storytelling)
     - Were at least 1-2 striking passages extracted as quote cards?
     - Were mentioned initiatives/experiments/events extracted as event cards?
     - Is there at least one insight card capturing the author's mental model shift?
     - If all answers are "no" but the source IS narrative-heavy, re-read for these narrative-specific patterns — don't skip them just because the content isn't presented as claims.
-14. **Alias deduplication** — when a new source refers to an existing concept/entity by a different name, do NOT create a new page; instead add the variant to the existing page's `aliases` list and update its `sources` YAML list
-15. **Merge conflicts** — when updating a page with information from a new source that contradicts existing claims, mark with a conflict callout:
+16. **Alias deduplication** — when a new source refers to an existing concept/entity by a different name, do NOT create a new page; instead add the variant to the existing page's `aliases` list and update its `sources` YAML list
+17. **Merge conflicts** — when updating a page with information from a new source that contradicts existing claims, mark with a conflict callout:
     ```
     > [!conflict] Source disagreement
     > [[source-a]] claims X, while [[source-b]] claims Y.
     ```
-16. Flag any contradictions with existing wiki content
-17. **Controversy detection** — run the 6-point checklist below against the source itself (not against the wiki). These are intrinsic quality signals, not cross-source comparisons. When any signal fires, record it in the source page's `## 争议标注` section.
+18. Flag any contradictions with existing wiki content
+19. **Controversy detection** — run the 6-point checklist below against the source itself (not against the wiki). These are intrinsic quality signals, not cross-source comparisons. When any signal fires, record it in the source page's `## 争议标注` section.
 
    | # | Signal | What to check |
    |---|--------|---------------|
@@ -82,18 +84,18 @@ Triggered by: *"ingest <file>"* or `/wiki-ingest`
 
    **Important**: These signals do NOT mean the source is rejected. They mean the source is annotated so future synthesis can weigh it appropriately. A preprint with a small sample can still contain genuine insight — but it should not be treated as settled knowledge.
 
-18. Prepend to `wiki/log.md` (newest first, reverse chronological) — use `## [YYYY-MM-DD] ingest | <Title>` header, then list new pages using `[[wikilink]]` format (not backtick paths), and summarize cross-source connections. For archived pages, note the archive version.
-19. **Post-ingest validation (mandatory)** — three checks before declaring ingest complete:
+20. Prepend to `wiki/log.md` (newest first, reverse chronological) — use `## [YYYY-MM-DD] ingest | <Title>` header, then list new pages using `[[wikilink]]` format (not backtick paths), and summarize cross-source connections. For archived pages, note the archive version.
+21. **Post-ingest validation (mandatory)** — three checks before declaring ingest complete:
 
-    19a. **Broken outgoing links** — for each newly created or updated wiki page, run:
+    21a. **Broken outgoing links** — for each newly created or updated wiki page, run:
     ```
     python3 tools/health.py --check-file wiki/<path>/<page>.md
     ```
     If any broken links are reported, either create the missing pages or fix the links. Pay special attention to `#example` references: each `[[Target]] — #example` in a `## 关联` section signals that the target entity is a concrete instance that MUST have its own wiki page. If the target doesn't exist, create the page before finishing ingest.
 
-    19b. **Index sync** — verify all new pages are listed in `wiki/index.md`.
+    21b. **Index sync** — verify all new pages are listed in `wiki/index.md`.
 
-    19c. **Bilingual/zh link check** — if a display version exists at `raw/bilingual/<slug>-bilingual.md` or `raw/bilingual/<slug>-<lang>.md`, verify the `## 源文件` section has the bilingual link and the raw file has a corresponding backlink.
+    21c. **Bilingual/zh link check** — if a display version exists at `raw/bilingual/<slug>-bilingual.md` or `raw/bilingual/<slug>-zh.md`, verify the `## 源文件` section has the bilingual link and the raw file has a corresponding backlink.
 
 ### Source Page Format
 
@@ -151,7 +153,7 @@ updated: YYYY-MM-DD
 {发表/出版类型、同行评审状态、在该领域的贡献和创新性。}
 
 ### 有趣度
-- **图中心性**：在全图 N 个非源节点中度中心性排名第 X（前 X%）。{来源的连接模式和跨领域桥梁作用。}
+- **图中心性**：在全图 N 个非源节点中度中心性排名第 X（前 X%）。{来源的连接模式和跨领域桥梁作用。数据来自 `build_browser.py` 输出的 "Source Node Centrality" 表格。}
 - **时序评价**：{发布时间、有趣度的时间函数趋势——上升/平稳/衰减。}
 ```
 
@@ -325,8 +327,8 @@ revisions: []
 ### Version Mechanism
 
 Synthesis pages follow the same versioning rules as other wiki pages:
-- Re-running a synthesis after new cards are added triggers the version merge workflow (Ingest step 6)
-- Old version archived to `wiki/archive/{Name}-V{N}.md`, new version merges old + new cards
+- Re-running a synthesis after new cards are added triggers the version merge workflow (Ingest step 7)
+- Old version archived to `wiki/archive/{type}/{Name}-V{N}.md`, new version merges old + new cards
 
 <!-- CONFIGURABLE: Translate section headers (维度, 分组, 原卡链接) to your wiki's language -->
 
@@ -377,42 +379,51 @@ Output a health report. Use `--save` to write to `wiki/health-report.md`.
 
 ---
 
-## Graph Workflow
+## Browser Build Workflow
 
-Triggered by: *"build the knowledge graph"* or `/wiki-graph`
+Triggered by: *"build the browser"* or `python tools/build_browser.py`
 
-When the user asks to build the graph, run `tools/build_graph.py` which:
-- Pass 1: Parses all `[[wikilinks]]` → deterministic `EXTRACTED` edges
-- Pass 2: Infers implicit relationships → `INFERRED` edges with confidence scores
-- Runs Louvain community detection
-- Outputs `graph/graph.json` + `graph/graph.html`
-- **Excludes** `wiki/archive/` and `wiki/types/` — archived versions and type definitions are not graph nodes
+`build_browser.py` reads wiki files directly and generates:
+- `browser/data.js` — node metadata + edges (no markdown body)
+- `browser/content/*.json` — per-node markdown shards for lazy loading
+- `browser/content/bundle.json` — combined bulk load bundle for instant card opening
+- **Standalone `raw_source` cards** for every `raw/*.md` file (sorted library view, no graph edges)
+- **Excludes** `wiki/archive/` and `wiki/types/` — archived versions and type definitions are not browsable nodes
 
-If the user doesn't have Python/dependencies set up, instead generate the graph data manually:
-1. Use Grep to find all `[[wikilinks]]` across wiki pages (**excluding** `wiki/archive/` and `wiki/types/`)
-2. Build a node/edge list
-3. Write `graph/graph.json` directly
-4. Write `graph/graph.html` using the vis.js template
-
-### Build Conventions (build_graph.py + build_browser.py)
+### Build Conventions (build_browser.py)
 
 Key behaviors that affect ingest and source file placement:
 
-**Raw source discovery** — `all_raw_pages()` scans:
+**Raw source discovery** — scans:
 - `raw/*.md` (top-level source files)
 - `raw/<subdir>/*.md` for each subdirectory except `bilingual/` (for versioned sources with images)
 
 **Raw→wiki source matching** — Uses priority matching:
-1. **`source_file` frontmatter** (exact match) — the `source_file` field in wiki source pages determines graph linkage. Always verify this path is correct.
+1. **`source_file` frontmatter** (exact match) — the `source_file` field in wiki source pages determines full-text merging. Always verify this path is correct.
 2. **Filename stem fallback** — matches when `source_file` frontmatter is absent but raw filename stem matches wiki source page stem.
 
-**Display content substitution** — browser display replaces raw content with:
-- `raw/bilingual/<slug>-<lang>.md` (translation display, highest priority)
-- `raw/bilingual/<slug>-bilingual.md` (bilingual version)
-- Only the basename is used for lookup (flat directory), so nested raw files like `raw/report-v1/report.md` still find `raw/bilingual/report-<lang>.md`
+**Bilingual path lookup (`bilingual_path_for()`)**:
+- Normalizes spaces → hyphens in filenames
+- Strips version suffixes (e.g., `v1`, `v2`) for fallback matching
+- Checks for `-zh.md` (pure translation, highest priority) then `-bilingual.md`
+- Only basename used for lookup (flat bilingual directory), so nested raw files like `raw/report-v1/report.md` find `raw/bilingual/report-zh.md`
 
-**Image path rewriting** — relative image references in raw/bilingual markdown are rewritten for browser display. `![](images/foo.jpg)` becomes `![](../raw/<source-dir>/images/foo.jpg)`, resolving correctly from `browser/index.html` via `file://` protocol. Only relative paths are rewritten; absolute URLs (`https://...`) are preserved.
+**Image path rewriting & copying**:
+- Relative image paths like `![](images/foo.jpg)` in raw markdown are rewritten for browser display
+- Images are copied from `raw/<source-dir>/images/` to `browser/images/` for deployment
+- Absolute URLs (`https://...`) are preserved unchanged
+
+**Content bundle loading**:
+- `bundle.json` contains all node markdown for instant panel opening (no per-card HTTP requests)
+- Individual shard files exist as fallback for nodes too large for the bundle
+- Reduces load time from O(N) HTTP requests to 1 bulk load
 
 ### Auto-Build Hook
 
-After a wiki file is written or edited, the PostToolUse hook in `.claude/settings.json` can automatically run `python3 tools/build_graph.py --no-infer && python3 tools/build_browser.py`. This makes graph+browser rebuild automatic after every wiki edit or ingest. The hook only triggers when the edited file is under `wiki/`. Non-wiki edits (raw source files, tools, config) do not trigger a rebuild.
+After a wiki file is written or edited, the PostToolUse hook in `.claude/settings.json` automatically runs `python3 tools/build_browser.py` followed by `python3 tools/health.py --check-file <edited-file>`. This makes browser rebuild automatic after every wiki edit or ingest. The hook only triggers when the edited file is under `wiki/`. Non-wiki edits (raw source files, tools, config) do not trigger a rebuild.
+
+---
+
+## Graph Workflow [DEPRECATED]
+
+`tools/build_graph.py` is deprecated. Use `build_browser.py` instead, which includes all graph edge functionality directly without the intermediate `graph.json` file. For backward compatibility, `build_graph.py` is still available but no longer actively maintained.
