@@ -2,6 +2,16 @@
 
 All project-level changes (graph rebuilds, tool updates, infrastructure changes) are recorded here in reverse chronological order.
 
+## [2026-05-19] feat | Multi-source contribution rule in card-types.md
+
+### Added
+- **多源贡献规则章节** — 在 `card-types.md` 模板与提取指南之间新增独立章节，规定当卡片有 2+ 来源时需在 `## 关联` 前添加 `## 来源贡献`，写明每个来源的贡献内容
+
+## [2026-05-19] fix | Detail panel layout on wide screens
+
+### Fixed
+- **宽屏详情页内容偏右**：将 `#panel-body-wrapper` 从居中布局改为左对齐（`justify-content: flex-start`）+ 64px 左内边距，body 与 sidebar 之间增加 24px 间距
+
 ## [2026-05-14] sync | Backport improvements from ai-observatory project
 
 Synced all generic improvements from the active project back to the template.

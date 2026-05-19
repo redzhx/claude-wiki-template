@@ -547,6 +547,26 @@ Self-validation: `## 维度` must not be empty; at least 2 groups; `## 原卡链
 
 ---
 
+## 多源贡献规则（适用于所有卡片类型）
+
+When a card has **2+ sources** (the `sources:` YAML list has multiple entries), add a `## 来源贡献` section **after the main body and before `## 关联`** to document what each source contributed.
+
+```markdown
+## 来源贡献
+- [[source-slug-1|Display Name 1]] — 该来源贡献了什么（如：提供了核心概念定义）
+- [[source-slug-2|Display Name 2]] — #backs 提供了反面案例证据
+```
+
+Format rules:
+- Every source in the `sources:` list must be listed in order
+- Relationship tags (`#backs`, `#extends`, `#challenges`, `#applies`) are optional but recommended
+- Position: between `## 关联` and the last body section
+- Single-source cards skip this section entirely
+
+Full format reference in `page-format.md`'s Source Contributions section.
+
+---
+
 ## Card Extraction Guidelines
 
 The goal of the Card Method is to extract **atomic knowledge fragments** — one card, one idea.
